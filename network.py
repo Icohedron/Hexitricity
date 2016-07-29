@@ -6,6 +6,9 @@ def weight_variable(shape):
 def bias_variable(shape):
     return tf.Variable(tf.constant(0.1, shape=shape))
 
+def conv2d(x, W, stride):
+    return tf.Variable(tf.nn.conv2d(x, W, strides=[1, stride, stride, 1], padding='SAME'))
+
 class Network(object):
 
     x = tf.placeholder(tf.float32, [None, 13 * 13 + 1], name='Input')
