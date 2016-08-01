@@ -1,9 +1,9 @@
 # Asynchronous Advantage Actor-Critic (A3C) with Monte Carlo Tree Search and Hex
 
 To run, execute the following command
-'''
+```
 python async.py
-'''
+```
 
 ## Dependencies:
 * [tqdm] (https://pypi.python.org/pypi/tqdm)
