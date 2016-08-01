@@ -1,8 +1,8 @@
-# Deep Q Learning with Hex
+# Asynchronous Advantage Actor-Critic (A3C) with Monte Carlo Tree Search and Hex
 
 To run, execute the following command
 '''
-python qlearn.py
+python async.py
 '''
 
 ## Dependencies:
