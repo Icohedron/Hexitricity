@@ -1,0 +1,7 @@
+TODO:
+ - Network Hyperparameter adjustment and testing
+ - Optimization?
+ - Pruning of non-legal moves from network output?
+ - Documentation
+ - More code comments
+ - Monte Carlo Tree Search
