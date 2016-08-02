@@ -4,15 +4,16 @@ import tensorflow as tf
 import numpy as np
 import gym
 import threading
-import random
 import time
-from tqdm import tqdm, trange
+from tqdm import tqdm
 
-from network import Shared_VP_Network
+from network import *
 
 TRAIN = True # else, EVALUATE
 
-CONCURRENT_THREADS = 4
+CONCURRENT_THREADS = 4 # Adjust this according to your CPU specs
+
+THREAD_START_DELAY = 1
 
 REWARD_DISCOUNT_GAMMA = 0.99
 
@@ -22,152 +23,122 @@ BOARD_SIZE_SQUARED = BOARD_SIZE ** 2
 SAVE_INTERVAL = 5000
 SUMMARY_INTERVAL = 5
 
-SUMMARY_FILE_PATH = '/tmp/a3c_hex/tf_summaries'
+NETWORK_UPDATE_INTERVAL = 42
+
 EVALULATION_FILE_PATH = '/tmp/a3c_hex/eval'
 
 T = 0
-T_max = 900000000
+T_max = 2000
 
-t_max = 42
+t_max = 8
 
 
-def a3c_thread(thread_num, keep_running, environment, network, summary_ops, tfsession):
+def a3c_thread(thread_num, environment, graph, session, thread_coordinator):
     # Algorithm S3 from https://arxiv.org/abs/1602.01783
     # Google Deepmind -- Asynchronous Methods for Deep Reinforcement Learning
     # Asynchronous Advantage Actor Critic (A3C)
 
-    global T, T_max
-    time.sleep(3 * thread_num)
+    global T, T_max, running
 
-    reward_summary_placeholder, update_episode_reward, summary_op = summary_ops
+    time.sleep(THREAD_START_DELAY * thread_num)
 
-    while T < T_max and keep_running.is_set():
-        states_batch = []
-        actions_batch = []
-        rewards_batch = []
+    print('A3C thread {} started.'.format(thread_num))
 
-        t = 0
-        t_start = t
+    with thread_coordinator.stop_on_exception():
+
+        n_state, n_action, n_reward = graph.get_collection('inputs')
+        n_policy, n_value = graph.get_collection('outputs')
+        n_policy_optimizer, n_value_optimizer = graph.get_collection('optimizers')
+
         state = environment.reset()
-        terminal = False
 
-        episode_reward = 0
+        while T < T_max and not thread_coordinator.should_stop():
 
-        while not terminal or (t - t_start) == t_max:
-            action_probability_distribution = network.policy_output([state], tfsession)[0]
-            action_index = np.random.choice(len(action_probability_distribution), p=action_probability_distribution)
+            states = []
+            actions = []
+            rewards = []
 
-            action_one_hot = np.zeros(BOARD_SIZE_SQUARED)
-            action_one_hot[action_index] = 1
+            # print('Thread {0} start loop: {1} at global step {2}'.format(thread_num, session.run(graph.get_collection('test')[0]), T))
 
-            next_state, reward, terminal, info = environment.step(action_index)
+            t = 0
+            t_start = t
+            terminal = False
 
-            states_batch.append(state)
-            actions_batch.append(action_one_hot)
-            rewards_batch.append(reward)
+            while not terminal or (t - t_start) == t_max:
+                action_policy = session.run(n_policy, feed_dict={n_state: [state]})[0]
+                action = np.random.choice(len(action_policy), p=action_policy)
 
-            episode_reward += reward
+                next_state, reward, terminal, info = environment.step(action)
 
-            t += 1
-            T += 1
+                states.append(state)
+                actions.append(action)
+                rewards.append(reward)
 
-            state = next_state
+                t += 1
+                T += 1
 
-        if terminal:
-            state_return = 0
-        else:
-            state_return = network.value_output([state])[0][0] # Bootstrap from last state
+                state = next_state
 
-        state_returns_batch = np.zeros(t)
-        for i in reversed(range(t_start, t)):
-            state_return = rewards_batch[i] + REWARD_DISCOUNT_GAMMA * state_return
-            state_returns_batch[i] = state_return
+            if terminal:
+                state_reward = 0
+            else:
+                state_reward = session.run(n_value, feed_dict={n_state: [state]})[0][0] # Bootstrap from last state
 
-        network.train(states_batch, actions_batch, state_returns_batch, tfsession)
+            state_rewards = []
+            for i in reversed(range(t_start, t)):
+                state_reward = rewards[i] + REWARD_DISCOUNT_GAMMA * state_reward
+                state_rewards.append(state_reward)
 
-        if terminal:
-            # Record statistics of finished episode
-            # print('Thread {0} finished episode in {1} timesteps with reward {2} at time {3}'.format(thread_num, t, episode_reward, T))
-            print(action_index)
-            tfsession.run(update_episode_reward, feed_dict={reward_summary_placeholder: episode_reward})
+            states_rev = list(reversed(states))
+            acitons_rev = list(reversed(actions))
 
+            session.run(n_policy_optimizer, feed_dict={n_state: states_rev, n_action: acitons_rev, n_reward: state_rewards})
+            session.run(n_value_optimizer, feed_dict={n_state: states_rev, n_reward: state_rewards})
 
-def get_summary_ops():
-    # Generate summary operations for Tensorboard
+            # print('Thread {0} end loop: {1} at global step {2}'.format(thread_num, session.run(graph.get_collection('test')[0]), T))
 
-    episode_reward = tf.Variable(0.0)
-    tf.scalar_summary('Episode Reward', episode_reward)
-    reward_summary_placeholder = tf.placeholder(tf.float32)
-    update_episode_reward = episode_reward.assign(reward_summary_placeholder)
+            if terminal:
+                # print(action)
+                state = environment.reset()
 
-    summary_op = tf.merge_all_summaries()
-
-    return reward_summary_placeholder, update_episode_reward, summary_op
+    print('Closed A3C thread {}.'.format(thread_num))
 
 
-def train(network, tfsession):
+def train(graph, session):
     environments = [gym.make('Hex9x9-v0') for i in range(CONCURRENT_THREADS)]
 
-    keep_running = threading.Event()
-    keep_running.set()
+    thread_coordinator = tf.train.Coordinator()
 
-    summary_ops = get_summary_ops()
-    summary_op = summary_ops[-1]
-
-    network.load_from_checkpoint(tfsession)
-    writer = tf.train.SummaryWriter(SUMMARY_FILE_PATH, tfsession.graph)
-
-    a3c_threads = [threading.Thread(target=a3c_thread, args=(thread_num, keep_running, environments[thread_num], network, summary_ops, tfsession)) for thread_num in range(CONCURRENT_THREADS)]
+    a3c_threads = [threading.Thread(target=a3c_thread, args=(thread_num, environments[thread_num], graph, session, thread_coordinator)) for thread_num in range(CONCURRENT_THREADS)]
+    print('Starting A3C threads...')
     for thread in a3c_threads:
         thread.start()
 
     try:
 
-        last_summary_time = 0
-        while True:
-            if T % SAVE_INTERVAL == 0 and T != 0:
-                network.save(tfsession)
+        time.sleep(THREAD_START_DELAY * CONCURRENT_THREADS)
 
-            time_now = time.time()
-            if time_now - last_summary_time > SUMMARY_INTERVAL:
-                summary = tfsession.run(summary_op)
-                writer.add_summary(summary, float(T))
-                last_summary_time = time_now
+        with tqdm(total=T_max) as tqdmT:
+            last_T = 0
+            while True:
+                T_diff = T - last_T
+                if T_diff > 0:
+                    tqdmT.update(T_diff)
+                    last_T = T
 
     except KeyboardInterrupt:
         print('Closing threads...')
-        keep_running.clear()
-        for thread in a3c_threads:
-            thread.join()
+        thread_coordinator.request_stop()
+        thread_coordinator.join(a3c_threads)
         print('Succesfully closed all threads.')
 
 
-def evaluate(network, tfsession):
-    environment = gym.make('Hex9x9-v0')
-    environment.monitor.start(EVALULATION_FILE_PATH)
+graph = tf.Graph()
+with tf.Session(graph=graph) as session:
+    create_network(graph, BOARD_SIZE)
+    saver = tf.train.Saver()
 
-    for episode in trange(100):
-        state = environment.reset()
-        terminal = False
+    session.run(tf.initialize_all_variables())
+    restore_checkpoint(saver, session)
 
-        episode_reward = 0
-
-        while not terminal:
-            environment.render()
-
-            action_probability_distribution = network.policy_output([state], tfsession)[0]
-            action_index = np.random.choice(len(action_probability_distribution), p=action_probability_distribution)
-
-            state, reward, terminal, info = environment.step(action_index)
-
-            episode_reward += reward
-
-    environment.monitor.close()
-
-
-with tf.Session() as tfsession:
-    network = Shared_VP_Network(BOARD_SIZE, tfsession)
-    if TRAIN:
-        train(network, tfsession)
-    else:
-        evaluate(network, tfsession)
+    train(graph, session)

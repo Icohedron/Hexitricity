@@ -1,6 +1,6 @@
 # Asynchronous Advantage Actor-Critic (A3C) with Monte Carlo Tree Search and Hex
 
-To run, execute the following command
+To train the network, execute async.py using the command
 ```
 python async.py
 ```

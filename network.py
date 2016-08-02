@@ -4,97 +4,114 @@ from datetime import datetime
 
 WEIGHT_STDDEV = 0.01
 BIAS_CONSTANT = 0.01
-LEARNING_RATE = 1e-3
 
-def weight_variable(shape, num_inputs):
-    return tf.Variable(tf.truncated_normal(shape, stddev=WEIGHT_STDDEV), name='weights')
+RMSProp_DECAY = 0.99
+LEARNING_RATE = 1e-4
 
-def bias_variable(shape):
-    return tf.Variable(tf.constant(BIAS_CONSTANT, shape=shape), name='bias')
+NETWORK_SAVE_PATH = 'saved_networks'
+NETWORK_SAVE_NAME = 'Hex9x9-v0-Hexitricty.checkpoint'
+FULL_NETWORK_PATH = NETWORK_SAVE_PATH + '/' + NETWORK_SAVE_NAME
 
-def conv2d(x, W):
-    return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
+SUMMARY_FILE_PATH = '/tmp/a3c_hex/tf_summaries'
 
-def relu_convolutional_layer(x, W, layer_num):
-    with tf.name_scope('HiddenConv-L{}'.format(layer_num)):
-        W_conv = weight_variable(W, W[-2])
-        b_conv = bias_variable([W[-1]])
-    return tf.nn.relu(conv2d(x, W_conv) + b_conv)
 
-class Shared_VP_Network(object):
+def relu_conv_layer(input_img, kernel_size, in_channels, out_channels):
+    W = tf.Variable(tf.truncated_normal([kernel_size, kernel_size, in_channels, out_channels], stddev=WEIGHT_STDDEV), name='weights')
+    b = tf.Variable(tf.constant(BIAS_CONSTANT, shape=[out_channels]), name='bias')
+    conv = tf.nn.conv2d(input_img, W, strides=[1, 1, 1, 1], padding='SAME')
+    return tf.nn.relu(conv + b)
 
-    def __init__(self, board_size, tfsession):
-        with tf.device('/cpu:0'):
-            self.state_input = tf.placeholder(tf.float32, shape=[None, 3, board_size, board_size], name='State_Input')
 
-            state_board = tf.transpose(self.state_input, perm=[0, 2, 3, 1]) # transpose from [?, 3, 9, 9] array to [?, 9, 9, 3] array
+def create_network(graph, board_size, thread_sub_network=False):
+    with graph.as_default():
+        with graph.device('/cpu:0'):
 
-            h_conv1 = relu_convolutional_layer(state_board, [5, 5, 3, 32], 1)
-            h_conv2 = relu_convolutional_layer(h_conv1, [4, 4, 32, 64], 2)
-            h_conv3 = relu_convolutional_layer(h_conv2, [3, 3, 64, 64], 3)
+            with tf.name_scope('Inputs'):
+                state = tf.placeholder(tf.float32, shape=[None, 3, board_size, board_size], name='state')
+                action = tf.placeholder(tf.int32, shape=[None], name='action')
+                reward = tf.placeholder(tf.float32, shape=[None], name='reward')
 
-            h_conv3_flat = tf.reshape(h_conv3, [-1, board_size * board_size * 64])
+                state_img = tf.transpose(state, perm=[0, 2, 3, 1])
 
-            with tf.name_scope('HiddenFC-L4'):
-                W_fcl4 = weight_variable([board_size * board_size * 64, 512], board_size * board_size * 64)
-                b_fcl4 = bias_variable([512])
-            h_fcl4 = tf.nn.relu(tf.matmul(h_conv3_flat, W_fcl4) + b_fcl4)
+            with tf.name_scope('HiddenConv-L0'):
+                h_conv0 = relu_conv_layer(state_img, 5, 3, 30)
 
-            # Policy Network Output
+            with tf.name_scope('HiddenConv-L1'):
+                h_conv1 = relu_conv_layer(h_conv0, 4, 30, 60)
 
-            with tf.name_scope('PolicyOutputFC-L5'):
-                W_pfcl5 = weight_variable([512, board_size * board_size], 512)
-                b_pfcl5 = bias_variable([board_size * board_size])
+            with tf.name_scope('HiddenConv-L2'):
+                h_conv2 = relu_conv_layer(h_conv1, 3, 60, 120)
 
-            self.policy_network = tf.nn.softmax(tf.matmul(h_fcl4, W_pfcl5) + b_pfcl5)
+                conv_flat = tf.reshape(h_conv2, [-1, board_size * board_size * 120])
 
-            # Value Network Output
+            with tf.name_scope('HiddenFC-L3'):
+                W_fcl = tf.Variable(tf.truncated_normal([board_size * board_size * 120, 512], stddev=WEIGHT_STDDEV), name='weights')
+                b_fcl = tf.Variable(tf.constant(BIAS_CONSTANT, shape=[512]), name='bias')
 
-            with tf.name_scope('ValueOutputFC-L5'):
-                W_vfcl5 = weight_variable([512, 1], 512)
-                b_vfcl5 = bias_variable([1])
+                h_fcl = tf.nn.relu(tf.matmul(conv_flat, W_fcl) + b_fcl)
 
-            self.value_network = tf.matmul(h_fcl4, W_vfcl5) + b_vfcl5
+            with tf.name_scope('OutputPolicy-L4-A'):
+                p_W_fcl = tf.Variable(tf.truncated_normal([512, board_size * board_size], stddev=WEIGHT_STDDEV), name='weights')
+                p_b_fcl = tf.Variable(tf.constant(BIAS_CONSTANT, shape=[board_size * board_size]), name='bias')
+
+                policy = tf.nn.softmax(tf.matmul(h_fcl, p_W_fcl) + p_b_fcl)
+
+            with tf.name_scope('OutputValue-L4-B'):
+                v_W_fcl = tf.Variable(tf.truncated_normal([512, 1], stddev=WEIGHT_STDDEV), name='weights')
+                v_b_fcl = tf.Variable(tf.constant(BIAS_CONSTANT, shape=[1]), name='bias')
+
+                value = tf.matmul(h_fcl, v_W_fcl) + v_b_fcl
 
             # Training
 
-            # Algorithm S3 from https://arxiv.org/abs/1602.01783
-            # Google Deepmind -- Asynchronous Methods for Deep Reinforcement Learning
-            # Asynchronous Advantage Actor Critic (A3C)
+            optimizer = tf.train.RMSPropOptimizer(LEARNING_RATE, decay=RMSProp_DECAY)
 
-            self.state_return = tf.placeholder(tf.float32, [None])
-            self.action = tf.placeholder(tf.float32, [None, board_size * board_size])
+            action_one_hot = tf.one_hot(action, board_size * board_size)
+            reward_expanded = tf.expand_dims(reward, -1)
 
-            log_probability = tf.log(tf.reduce_sum(tf.mul(self.policy_network, self.action), reduction_indices=1))
-            policy_reward = log_probability * (self.state_return - self.value_network) # multiply by the advantage
+            # policy_debug = tf.Print(policy, [policy], 'Policy: ')
+            # value_debug = tf.Print(value, [value], 'Value: ')
+            # reward_expanded_debug = tf.Print(reward_expanded, [reward_expanded], 'Reward: ')
 
-            value_cost = tf.reduce_mean(tf.square(self.state_return - self.value_network))
+            # policy_baseline = tf.log(tf.reduce_sum(tf.mul(policy_debug, action_one_hot), reduction_indices=1)) * (reward_expanded_debug - value_debug)
+            policy_baseline = tf.log(tf.reduce_sum(tf.mul(policy, action_one_hot), reduction_indices=1)) * (reward_expanded - value)
+            value_loss = tf.reduce_mean(tf.square(reward - value))
 
-            self.train_policy = tf.train.RMSPropOptimizer(LEARNING_RATE, decay=0.99).minimize(-policy_reward) # maximize reward
-            self.train_value = tf.train.RMSPropOptimizer(LEARNING_RATE, decay=0.99).minimize(value_cost) # minimize cost of wrong value estimations
+            # policy_baseline_debug = tf.Print(policy_baseline, [policy_baseline], 'Policy Baseline: ')
+            # value_loss_debug = tf.Print(value_loss, [value_loss], 'Value Loss: ')
 
-    def load_from_checkpoint(self, tfsession):
-            # Load network from checkpoint if available
-            self.saver = tf.train.Saver()
-            tfsession.run(tf.initialize_all_variables())
-            checkpoint = tf.train.get_checkpoint_state('saved_networks')
-            if checkpoint and checkpoint.model_checkpoint_path:
-                self.saver.restore(tfsession, checkpoint.model_checkpoint_path)
-                print('Succesfully loaded network from ' + str(checkpoint.model_checkpoint_path))
-            else:
-                print('Unable to find any saved networks')
+            # policy_optimizer = optimizer.minimize(-policy_baseline_debug) # minimizing a negative is the same as maximizing a positive
+            policy_optimizer = optimizer.minimize(-policy_baseline) # minimizing a negative is the same as maximizing a positive
+            # value_optimizer = optimizer.minimize(value_loss_debug)
+            value_optimizer = optimizer.minimize(value_loss)
 
-    def policy_output(self, state, tfsession):
-        return tfsession.run(self.policy_network, feed_dict={self.state_input: state})
+            # Add variables and operations to graph
 
-    def value_output(self, state, tfsession):
-        return tfsession.run(self.value_network, feed_dict={self.state_input: state})
+            tf.add_to_collection('inputs', state)
+            tf.add_to_collection('inputs', action)
+            tf.add_to_collection('inputs', reward)
 
-    def train(self, states, actions, state_returns, tfsession):
-        tfsession.run(self.train_policy, feed_dict={self.state_input: states, self.action: actions, self.state_return: state_returns})
-        tfsession.run(self.train_value, feed_dict={self.state_input: states, self.state_return: state_returns})
+            tf.add_to_collection('outputs', policy)
+            tf.add_to_collection('outputs', value)
 
-    def save(self, tfsession):
-        path = 'saved_networks/Hex9x9-v0-Hexitricty'
-        self.saver.save(tfsession, path)
-        print('Saved network in ' + path + ' [' + datetime.now().time().isoformat() + ']')
+            tf.add_to_collection('optimizers', policy_optimizer)
+            tf.add_to_collection('optimizers', value_optimizer)
+
+            tf.add_to_collection('test', v_b_fcl)
+
+            tf.add_to_collection('initializer', tf.initialize_all_variables())
+
+
+def save_network(saver, session):
+    saver.save(session, FULL_NETWORK_PATH)
+    print('Saved network in ' + FULL_NETWORK_PATH + ' [' + datetime.now().time().isoformat() + ']')
+
+
+def restore_checkpoint(saver, session):
+    checkpoint = tf.train.get_checkpoint_state(NETWORK_SAVE_PATH)
+    if checkpoint and checkpoint.model_checkpoint_path:
+        saver.restore(session, checkpoint.model_checkpoint_path)
+        print('Restored session from previous checkpoint.')
+    else:
+        print('Unable to find a saved checkpoint.\nStarting a new network.')
+        save_network(saver, session)
