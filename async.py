@@ -31,6 +31,15 @@ T_max = 1000000000
 
 t_max = 5
 
+max_t_per_episode = int(BOARD_SIZE * BOARD_SIZE * 0.5)
+
+
+def choose_action(empty_tiles, action_policy):
+    ap = np.array(action_policy)
+    ap *= np.array(empty_tiles).flatten()
+    ap /= np.sum(ap)
+    return np.random.choice(len(ap), p=ap)
+
 
 def a3c_thread(thread_num, environment, graph, session, summary_ops, thread_coordinator):
     # Algorithm S3 from https://arxiv.org/abs/1602.01783
@@ -71,7 +80,7 @@ def a3c_thread(thread_num, environment, graph, session, summary_ops, thread_coor
 
             while not terminal or (t - t_start) == t_max:
                 action_policy = session.run(n_policy, feed_dict={n_state: [state]})[0]
-                action = np.random.choice(len(action_policy), p=action_policy)
+                action = choose_action(state[2], action_policy)
 
                 next_state, reward, terminal, info = environment.step(action)
 
@@ -91,6 +100,10 @@ def a3c_thread(thread_num, environment, graph, session, summary_ops, thread_coor
                 ep_t += 1
 
                 state = next_state
+
+                if ep_t == max_t_per_episode:
+                    reward = -1.0
+                    terminal = True
 
             if terminal:
                 state_reward = 0

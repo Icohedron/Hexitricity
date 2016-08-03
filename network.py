@@ -5,8 +5,8 @@ from datetime import datetime
 WEIGHT_STDDEV = 0.01
 BIAS_CONSTANT = 0.01
 
-RMSProp_DECAY = 0.99
-LEARNING_RATE = 1e-4
+# RMSProp_DECAY = 0.99
+LEARNING_RATE = 1e-6
 
 NETWORK_SAVE_PATH = 'saved_networks'
 NETWORK_SAVE_NAME = 'Hex9x9-v0-Hexitricty.checkpoint'
@@ -70,7 +70,7 @@ def create_network(graph, board_size, thread_sub_network=False):
 
             # Training
 
-            RMSProp = tf.train.RMSPropOptimizer(LEARNING_RATE, decay=RMSProp_DECAY)
+            Adam = tf.train.AdamOptimizer(LEARNING_RATE)
 
             action_one_hot = tf.one_hot(action, board_size * board_size)
             reward_expanded = tf.expand_dims(reward, -1)
@@ -83,7 +83,6 @@ def create_network(graph, board_size, thread_sub_network=False):
             # But instead we exploit the sum rule in differentiation:
             #   The sum of derviatives is equal to the derivative of the sums.
 
-            # policy_baseline = tf.log(tf.reduce_sum(tf.mul(policy_debug, action_one_hot), reduction_indices=1)) * (reward_expanded_debug - value_debug)
             policy_baseline = tf.reduce_sum(
                                 tf.log(tf.reduce_sum(tf.mul(policy, action_one_hot),
                                 reduction_indices=1)) * (reward_expanded - value),
@@ -94,9 +93,9 @@ def create_network(graph, board_size, thread_sub_network=False):
             # value_loss_debug = tf.Print(value_loss, [value_loss], 'Value Loss: ')
 
             # policy_optimizer = RMSProp.minimize(-policy_baseline_debug) # minimizing a negative is the same as maximizing a positive
-            policy_optimizer = RMSProp.minimize(-policy_baseline) # minimizing a negative is the same as maximizing a positive
+            policy_optimizer = Adam.minimize(-policy_baseline)
             # value_optimizer = RMSProp.minimize(value_loss_debug)
-            value_optimizer = RMSProp.minimize(value_loss)
+            value_optimizer = Adam.minimize(value_loss)
 
             # Add variables and operations to graph
 
