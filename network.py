@@ -12,11 +12,11 @@ NETWORK_SAVE_PATH = 'saved_networks'
 NETWORK_SAVE_NAME = 'Hex9x9-v0-Hexitricty.checkpoint'
 FULL_NETWORK_PATH = NETWORK_SAVE_PATH + '/' + NETWORK_SAVE_NAME
 
-SUMMARY_FILE_PATH = '/tmp/a3c_hex/tf_summaries'
-
 
 def relu_conv_layer(input_img, kernel_size, in_channels, out_channels):
-    W = tf.Variable(tf.truncated_normal([kernel_size, kernel_size, in_channels, out_channels], stddev=WEIGHT_STDDEV), name='weights')
+    W = tf.Variable(tf.truncated_normal(
+            [kernel_size, kernel_size, in_channels, out_channels],
+            stddev=WEIGHT_STDDEV), name='weights')
     b = tf.Variable(tf.constant(BIAS_CONSTANT, shape=[out_channels]), name='bias')
     conv = tf.nn.conv2d(input_img, W, strides=[1, 1, 1, 1], padding='SAME')
     return tf.nn.relu(conv + b)
@@ -27,7 +27,9 @@ def create_network(graph, board_size, thread_sub_network=False):
         with graph.device('/cpu:0'):
 
             with tf.name_scope('Inputs'):
-                state = tf.placeholder(tf.float32, shape=[None, 3, board_size, board_size], name='state')
+                state = tf.placeholder(tf.float32,
+                            shape=[None, 3, board_size, board_size],
+                            name='state')
                 action = tf.placeholder(tf.int32, shape=[None], name='action')
                 reward = tf.placeholder(tf.float32, shape=[None], name='reward')
 
@@ -45,13 +47,17 @@ def create_network(graph, board_size, thread_sub_network=False):
                 conv_flat = tf.reshape(h_conv2, [-1, board_size * board_size * 120])
 
             with tf.name_scope('HiddenFC-L3'):
-                W_fcl = tf.Variable(tf.truncated_normal([board_size * board_size * 120, 512], stddev=WEIGHT_STDDEV), name='weights')
+                W_fcl = tf.Variable(tf.truncated_normal(
+                            [board_size * board_size * 120, 512],
+                            stddev=WEIGHT_STDDEV), name='weights')
                 b_fcl = tf.Variable(tf.constant(BIAS_CONSTANT, shape=[512]), name='bias')
 
                 h_fcl = tf.nn.relu(tf.matmul(conv_flat, W_fcl) + b_fcl)
 
             with tf.name_scope('OutputPolicy-L4-A'):
-                p_W_fcl = tf.Variable(tf.truncated_normal([512, board_size * board_size], stddev=WEIGHT_STDDEV), name='weights')
+                p_W_fcl = tf.Variable(tf.truncated_normal(
+                            [512, board_size * board_size],
+                            stddev=WEIGHT_STDDEV), name='weights')
                 p_b_fcl = tf.Variable(tf.constant(BIAS_CONSTANT, shape=[board_size * board_size]), name='bias')
 
                 policy = tf.nn.softmax(tf.matmul(h_fcl, p_W_fcl) + p_b_fcl)
@@ -64,7 +70,7 @@ def create_network(graph, board_size, thread_sub_network=False):
 
             # Training
 
-            optimizer = tf.train.RMSPropOptimizer(LEARNING_RATE, decay=RMSProp_DECAY)
+            RMSProp = tf.train.RMSPropOptimizer(LEARNING_RATE, decay=RMSProp_DECAY)
 
             action_one_hot = tf.one_hot(action, board_size * board_size)
             reward_expanded = tf.expand_dims(reward, -1)
@@ -73,17 +79,24 @@ def create_network(graph, board_size, thread_sub_network=False):
             # value_debug = tf.Print(value, [value], 'Value: ')
             # reward_expanded_debug = tf.Print(reward_expanded, [reward_expanded], 'Reward: ')
 
+            # Typically we're supposed to compute the gradients, add them together, then apply them.
+            # But instead we exploit the sum rule in differentiation:
+            #   The sum of derviatives is equal to the derivative of the sums.
+
             # policy_baseline = tf.log(tf.reduce_sum(tf.mul(policy_debug, action_one_hot), reduction_indices=1)) * (reward_expanded_debug - value_debug)
-            policy_baseline = tf.log(tf.reduce_sum(tf.mul(policy, action_one_hot), reduction_indices=1)) * (reward_expanded - value)
-            value_loss = tf.reduce_mean(tf.square(reward - value))
+            policy_baseline = tf.reduce_sum(
+                                tf.log(tf.reduce_sum(tf.mul(policy, action_one_hot),
+                                reduction_indices=1)) * (reward_expanded - value),
+                                reduction_indices=0)
+            value_loss = tf.reduce_sum(tf.square(reward - value), reduction_indices=0)
 
             # policy_baseline_debug = tf.Print(policy_baseline, [policy_baseline], 'Policy Baseline: ')
             # value_loss_debug = tf.Print(value_loss, [value_loss], 'Value Loss: ')
 
-            # policy_optimizer = optimizer.minimize(-policy_baseline_debug) # minimizing a negative is the same as maximizing a positive
-            policy_optimizer = optimizer.minimize(-policy_baseline) # minimizing a negative is the same as maximizing a positive
-            # value_optimizer = optimizer.minimize(value_loss_debug)
-            value_optimizer = optimizer.minimize(value_loss)
+            # policy_optimizer = RMSProp.minimize(-policy_baseline_debug) # minimizing a negative is the same as maximizing a positive
+            policy_optimizer = RMSProp.minimize(-policy_baseline) # minimizing a negative is the same as maximizing a positive
+            # value_optimizer = RMSProp.minimize(value_loss_debug)
+            value_optimizer = RMSProp.minimize(value_loss)
 
             # Add variables and operations to graph
 

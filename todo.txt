@@ -5,3 +5,4 @@ TODO:
  - Documentation
  - More code comments
  - Monte Carlo Tree Search
+ - Network evaluator
