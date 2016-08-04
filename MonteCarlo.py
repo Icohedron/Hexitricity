@@ -1,85 +1,101 @@
 import datetime
 from random import choice
-from numpy.random import choice as npr
+import numpy as np
+
+from _ast import Nonlocal
 
 boardSize = 9
-hexBoard = [[0]*boardSize for i in range(boardSize)]
+hexBoard = [[0]*(boardSize**2) for i in range(boardSize)]
 
 
 class Board (object):
-    def __init__(self):
-        self
-    def start (self):
-        pass
+    def _init_ (self):	                    #Init 
+        self.hexBoard = [[0]*(boardSize**2) for i in range(boardSize)]
     
-    def getCurrentPlayer(self, state):
-        pass
+    def setBoard(self, board):              #Done
+        self.hexBoard = board
     
-    def nextState(self, state, play):
-        pass
+    def startState (self): 	                #Done
+        return np.reshape(self.hexBoard,(1, len(self.hexBoard)))
     
-    def getLegalPlays(self, stateHistory):
-        pass
+    def getCurrentPlayer(self, state): 	    #Done
+        plr1 = 0
+        plr2 = 0
+        
+        for i in state:
+            if i == 0:
+                pass
+            elif i == 1:
+                plr1 += 1
+            else:
+                plr2 += 1
+        if plr1 > plr2:
+            return 2
+        else:
+            return 1
+            
+    def nextState(self, state, play): 	    #Done
+        plr = getCurrentPlayer(state)
+        state[play] = plr
+        return state
     
-    def winner(self, stateHistory):
+    def getLegalPlays(self, stateHistory): 	#Done
+        plays = []
+        for i in range(len(stateHistory[-1])):
+            if stateHistory[-1][i] == 0:
+                plays.append(i)
+        return plays
+    
+    def winner(self, stateHistory):         #Done
+        
+        board = np.reshape(stateHistory[-1], (boardSize, boardSize)).tolist()
+        
         def shearchForWin():
             """Check if player has won."""
             wasHere = [[False]*boardSize for i in range(boardSize)]
-        
-            def resetPath():
-                nonlocal wasHere
-                wasHere = [[False]*boardWidth for i in range(boardHeight)]
-        
+            
             def recursiveCheck(x, y, depth):
                 """The recursive check."""
-                if (player == 1 and player == board[y][x]) and (y == boardHeight-1):
-                    path[y][x] = depth
+                if (player == 1 and player == board[y][x]) and (y == boardSize-1):
                     return True
-                elif (player == 2 and player == board[y][x]) and (x == boardWidth-1):
-                    path[y][x] = depth
+                elif (player == 2 and player == board[y][x]) and (x == boardSize-1):
                     return True
                 if (board[y][x] != player) or (wasHere[y][x]):
                     return False
                 wasHere[y][x] = True
         
-                if(x != boardWidth - 1):  # right
+                if(x != boardSize - 1):  # right
                     if(recursiveCheck(x+1, y, depth+1)):
-                        path[y][x] = depth
                         return True
-                if(y != boardHeight - 1):  # down
+                if(y != boardSize - 1):  # down
                     if(recursiveCheck(x, y+1, depth+1)):
-                        path[y][x] = depth
                         return True
                 if(x != 0):  # left
                     if(recursiveCheck(x-1, y, depth+1)):
-                        path[y][x] = depth
                         return True
                 if(y != 0):  # up
                     if(recursiveCheck(x, y-1, depth+1)):
-                        path[y][x] = depth
                         return True
-                if((y != 0) and (x != boardWidth - 1)):  # up-right
+                if((y != 0) and (x != boardSize - 1)):  # up-right
                     if(recursiveCheck(x+1, y-1, depth+1)):
-                        path[y][x] = depth
                         return True
-                if((y != boardHeight - 1) and (x != 0)):  # down-left
+                if((y != boardSize - 1) and (x != 0)):  # down-left
                     if(recursiveCheck(x-1, y+1, depth+1)):
-                        path[y][x] = depth
                         return True
                 return False
             player = 1
-            for x in range(boardWidth):
-                resetPath()
+            for x in range(boardSize):
+                wasHere = [[False]*boardSize for i in range(boardSize)]
                 if (recursiveCheck(x, 0, 1)):
                     # BlueWin
-                    return path
+                    return 1
             player = 2
-            for y in range(boardHeight):
-                resetPath()
+            for y in range(boardSize):
+                wasHere = [[False]*boardSize for i in range(boardSize)]
                 if (recursiveCheck(0, y, 1)):
                     # RedWin
-                    return path
-            return None
+                    return 2
+            return 0
         return shearchForWin()
     
 class monteCarlo(object):
@@ -100,7 +116,7 @@ class monteCarlo(object):
         pass
     
     def getPlay (self):
-        self.maxPlay = 0
+        self.maxDepth = 0
         state = self.states[-1]
         player = self.board.currentPlayer(state)
         legal = self.board.getLegalPlays(self.states[:])
@@ -127,14 +143,15 @@ class monteCarlo(object):
                                 for p, s in moveStates
                                )
         
+        print("Max depth reached: ", self.maxDepth)
         return move
     
     def runSimulation(self):
-        visitedStates = set()
+        plays, wins = self.plays, self.wins
         
+        visitedStates = set()
         statesCopy = self.states[:]
         state = statesCopy[-1]
-        
         player = self.board.getCurrentPlayer(self, state)
         
         expand = True
@@ -151,7 +168,7 @@ class monteCarlo(object):
                                         for p, s in moveStates)
                 
             else:
-                move, state = choice(legal)
+                move, state = choice(moveStates)
                 
             statesCopy.append(state)
             
@@ -160,10 +177,12 @@ class monteCarlo(object):
                 expand = False
                 self.plays[(player, state)] = 0
                 self.wins[(player, state)] = 0
+                if t > self.maxDepth:
+                    self.maxDepth = t
             
             visitedStates.add((player, state))
             
-            winner = self.board.winner()
+            winner = self.board.winner(statesCopy)
             if winner:
                 break
             
@@ -175,4 +194,3 @@ class monteCarlo(object):
                 self.wins[(player, state)] += 1
 
 
-    
