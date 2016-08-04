@@ -13,7 +13,9 @@ from network import *
 
 TRAIN = True # else, EVALUATE
 
-CONCURRENT_THREADS = 16 # Adjust this according to your CPU specs
+CONCURRENT_THREADS = 16
+
+PRUNE_INVALID_MOVES = True
 
 THREAD_START_DELAY = 1
 
@@ -27,8 +29,8 @@ SUMMARY_INTERVAL = 5
 
 NETWORK_UPDATE_INTERVAL = 42
 
-SUMMARY_FILE_PATH = '/tmp/a3c_hex/tf_summaries'
-EVALULATION_FILE_PATH = '/tmp/a3c_hex/eval'
+SUMMARY_FILE_PATH = 'saved_networks/tf_summaries'
+EVALULATION_FILE_PATH = 'saved_networks/evaluations'
 
 T = 0
 T_max = 1000000000
@@ -86,7 +88,7 @@ def a3c_thread(thread_num, environment, graph, session, summary_ops, thread_coor
 
             while not terminal or (t - t_start) == t_max:
                 action_policy = session.run(n_policy, feed_dict={n_state: [state]})[0]
-                action = choose_action(state[2], action_policy)
+                action = choose_action(state[2], action_policy) if PRUNE_INVALID_MOVES else np.random.choice(len(action_policy), p=action_policy)
 
                 next_state, reward, terminal, info = environment.step(action)
 
@@ -230,7 +232,7 @@ def evaluate(graph, session):
 
         while not terminal:
             action_policy = session.run(n_policy, feed_dict={n_state: [state]})[0]
-            action = choose_action(state[2], action_policy)
+            action = choose_action(state[2], action_policy) if PRUNE_INVALID_MOVES else np.random.choice(len(action_policy), p=action_policy)
 
             state, reward, terminal, info = environment.step(action)
 
