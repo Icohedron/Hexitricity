@@ -9,7 +9,7 @@ from network import *
 
 TRAIN = True # else, EVALUATE
 
-CONCURRENT_THREADS = 4 # Adjust this according to your CPU specs
+CONCURRENT_THREADS = 16 # Adjust this according to your CPU specs
 
 THREAD_START_DELAY = 1
 
@@ -54,15 +54,18 @@ def a3c_thread(thread_num, environment, graph, session, summary_ops, thread_coor
 
     with thread_coordinator.stop_on_exception():
 
-        n_state, n_action, n_reward = graph.get_collection('inputs')
+        n_state, n_action, n_reward, n_temporal_difference = graph.get_collection('inputs')
         n_policy, n_value = graph.get_collection('outputs')
-        n_policy_optimizer, n_value_optimizer = graph.get_collection('optimizers')
+        n_optimizer = graph.get_collection('optimizer')[0]
 
         episode_reward_summary, episode_timesteps_summary, max_action_probability_summary = summary_ops
 
         ep_r = 0
         max_ap = 0
         ep_t = 0
+
+        ep_c = 0
+        ep_accum_r = []
 
         state = environment.reset()
 
@@ -71,8 +74,7 @@ def a3c_thread(thread_num, environment, graph, session, summary_ops, thread_coor
             states = []
             actions = []
             rewards = []
-
-            # print('Thread {0} start loop: {1} at global step {2}'.format(thread_num, session.run(graph.get_collection('test')[0]), T))
+            temporal_differences = []
 
             t = 0
             t_start = t
@@ -83,6 +85,12 @@ def a3c_thread(thread_num, environment, graph, session, summary_ops, thread_coor
                 action = choose_action(state[2], action_policy)
 
                 next_state, reward, terminal, info = environment.step(action)
+
+                temporal_differences.append(reward - session.run(n_value, feed_dict={n_state: [state]})[0][0])
+
+                ep_t += 1
+                if ep_t == max_t_per_episode:
+                    terminal = True
 
                 states.append(state)
                 actions.append(action)
@@ -97,13 +105,7 @@ def a3c_thread(thread_num, environment, graph, session, summary_ops, thread_coor
                 t += 1
                 T += 1
 
-                ep_t += 1
-
                 state = next_state
-
-                if ep_t == max_t_per_episode:
-                    reward = -1.0
-                    terminal = True
 
             if terminal:
                 state_reward = 0
@@ -117,18 +119,20 @@ def a3c_thread(thread_num, environment, graph, session, summary_ops, thread_coor
 
             states_rev = list(reversed(states))
             actions_rev = list(reversed(actions))
+            temporal_differences_rev = list(reversed(temporal_differences))
 
-            session.run(n_policy_optimizer, feed_dict={n_state: states_rev, n_action: actions_rev, n_reward: state_rewards})
-            session.run(n_value_optimizer, feed_dict={n_state: states_rev, n_reward: state_rewards})
-            # session.run(n_optimizer, feed_dict={n_state: states_rev, n_action: actions_rev, n_reward: state_rewards})
-
-            # print('Thread {0} end loop: {1} at global step {2}'.format(thread_num, session.run(graph.get_collection('test')[0]), T))
+            session.run(n_optimizer, feed_dict={n_state: states_rev, n_action: actions_rev, n_reward: state_rewards, n_temporal_difference: temporal_differences_rev})
 
             if terminal:
-                # print('Ended game with action {0} in {1} time steps.'.format(action, t))
-                session.run(episode_reward_summary[0], feed_dict={episode_reward_summary[1]: ep_r})
                 session.run(episode_timesteps_summary[0], feed_dict={episode_timesteps_summary[1]: ep_t})
                 session.run(max_action_probability_summary[0], feed_dict={max_action_probability_summary[1]: max_ap})
+
+                ep_c += 1
+                ep_accum_r.append(ep_r)
+
+                if ep_c % 10 == 0:
+                    session.run(episode_reward_summary[0], feed_dict={episode_reward_summary[1]: np.mean(ep_accum_r)})
+                    ep_accum_r = []
 
                 ep_r = 0
                 max_ap = 0
@@ -139,9 +143,9 @@ def a3c_thread(thread_num, environment, graph, session, summary_ops, thread_coor
 
 
 def gen_summary_ops():
-    episode_reward = tf.Variable(0, name='episode_reward')
-    tf.scalar_summary('Episode Reward', episode_reward)
-    episode_reward_placeholder = tf.placeholder(tf.int32, name='episode_reward_placeholder')
+    episode_reward = tf.Variable(0.0, name='episode_reward')
+    tf.scalar_summary('Reward Averages over 10 Episodes', episode_reward)
+    episode_reward_placeholder = tf.placeholder(tf.float32, name='episode_reward_placeholder')
     update_episode_reward = episode_reward.assign(episode_reward_placeholder)
 
     episode_timesteps = tf.Variable(0, name='episode_timesteps')
@@ -160,12 +164,16 @@ def gen_summary_ops():
 
 
 def train(graph, saver, session):
+    global T
+
     environments = [gym.make('Hex9x9-v0') for i in range(CONCURRENT_THREADS)]
 
     thread_coordinator = tf.train.Coordinator()
 
     summary_ops = gen_summary_ops()
     summary_writer = tf.train.SummaryWriter(SUMMARY_FILE_PATH, graph)
+
+    session.run(tf.initialize_all_variables())
 
     a3c_threads = [threading.Thread(target=a3c_thread, args=(thread_num, environments[thread_num], graph, session, summary_ops, thread_coordinator)) for thread_num in range(CONCURRENT_THREADS)]
     print('Starting A3C threads...')
@@ -203,6 +211,42 @@ def train(graph, saver, session):
         print('Succesfully closed all threads.')
 
 
+def evaluate(graph, session):
+    environment = gym.make('Hex9x9-v0')
+    environment.monitor.start(EVALULATION_FILE_PATH)
+
+    n_state, n_action, n_reward = graph.get_collection('inputs')
+    n_policy, n_value = graph.get_collection('outputs')
+
+    episode_rewards = np.array([])
+
+    session.run(tf.initialize_all_variables())
+
+    for episode in range(100):
+        state = environment.reset()
+        terminal = False
+
+        ep_t = 0
+
+        while not terminal:
+            action_policy = session.run(n_policy, feed_dict={n_state: [state]})[0]
+            action = choose_action(state[2], action_policy)
+
+            state, reward, terminal, info = environment.step(action)
+
+            ep_t += 1
+            if ep_t == max_t_per_episode:
+                terminal = True
+
+            np.append(episode_rewards, reward)
+
+    environment.monitor.close()
+
+    print('Reward average: {}'.format(np.mean(episode_rewards)))
+    print('Games won: {}'.format(len(episode_rewards) - np.count_nonzero(episode_rewards - 1.0)))
+    print('Games lost: {}'.format(len(episode_rewards) - np.count_nonzero(episode_rewards + 1.0)))
+
+
 graph = tf.Graph()
 with tf.Session(graph=graph) as session:
     create_network(graph, BOARD_SIZE)
@@ -211,4 +255,7 @@ with tf.Session(graph=graph) as session:
     session.run(tf.initialize_all_variables())
     restore_checkpoint(saver, session)
 
-    train(graph, saver, session)
+    if TRAIN:
+        train(graph, saver, session)
+    else:
+        evaluate(graph, session)
