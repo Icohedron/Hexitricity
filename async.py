@@ -11,31 +11,37 @@ from tqdm import tqdm
 
 from network import *
 
+# Adjustable values
+
 TRAIN = True # else, EVALUATE
 
-CONCURRENT_THREADS = 16 # Adjust this according to your CPU specs
+CONCURRENT_THREADS = 16
+
+PRUNE_INVALID_MOVES = True # When false, performs awfully and does not seem to converge at all.
 
 THREAD_START_DELAY = 1
 
 REWARD_DISCOUNT_GAMMA = 1.0
 
-BOARD_SIZE = 9
-BOARD_SIZE_SQUARED = BOARD_SIZE ** 2
-
 SAVE_INTERVAL = 5000
 SUMMARY_INTERVAL = 5
 
-NETWORK_UPDATE_INTERVAL = 42
+# Constants
 
-SUMMARY_FILE_PATH = '/tmp/a3c_hex/tf_summaries'
-EVALULATION_FILE_PATH = '/tmp/a3c_hex/eval'
+SUMMARY_FILE_PATH = 'saved_networks/tf_summaries'
+EVALULATION_FILE_PATH = 'saved_networks/evaluations'
+
+BOARD_SIZE = 9
+BOARD_SIZE_SQUARED = BOARD_SIZE ** 2
+
+MAX_T_PER_EPISODE = int(BOARD_SIZE * BOARD_SIZE * 0.5)
+
+# Global variables
 
 T = 0
 T_max = 1000000000
 
 t_max = 5
-
-max_t_per_episode = int(BOARD_SIZE * BOARD_SIZE * 0.5)
 
 
 def choose_action(empty_tiles, action_policy):
@@ -86,14 +92,14 @@ def a3c_thread(thread_num, environment, graph, session, summary_ops, thread_coor
 
             while not terminal or (t - t_start) == t_max:
                 action_policy = session.run(n_policy, feed_dict={n_state: [state]})[0]
-                action = choose_action(state[2], action_policy)
+                action = choose_action(state[2], action_policy) if PRUNE_INVALID_MOVES else np.random.choice(len(action_policy), p=action_policy)
 
                 next_state, reward, terminal, info = environment.step(action)
 
                 temporal_differences.append(reward - session.run(n_value, feed_dict={n_state: [state]})[0][0])
 
                 ep_t += 1
-                if ep_t == max_t_per_episode:
+                if ep_t == MAX_T_PER_EPISODE:
                     terminal = True
 
                 states.append(state)
@@ -209,6 +215,7 @@ def train(graph, saver, session):
         thread_coordinator.request_stop()
         thread_coordinator.join(a3c_threads)
         print('Succesfully closed all threads.')
+        save_network(saver, session)
 
 
 def evaluate(graph, session):
@@ -230,12 +237,12 @@ def evaluate(graph, session):
 
         while not terminal:
             action_policy = session.run(n_policy, feed_dict={n_state: [state]})[0]
-            action = choose_action(state[2], action_policy)
+            action = choose_action(state[2], action_policy) if PRUNE_INVALID_MOVES else np.random.choice(len(action_policy), p=action_policy)
 
             state, reward, terminal, info = environment.step(action)
 
             ep_t += 1
-            if ep_t == max_t_per_episode:
+            if ep_t == MAX_T_PER_EPISODE:
                 terminal = True
 
             np.append(episode_rewards, reward)
