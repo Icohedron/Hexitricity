@@ -1,7 +1,7 @@
 TODO:
  - Network Hyperparameter adjustment and testing
  - Optimization?
- - Pruning of invalid moves from policy network output?
  - Documentation
  - More code comments
- - Monte Carlo Tree Search
+ - Use Monte Carlo Tree Search with the neural network
+ - Network evaluator
