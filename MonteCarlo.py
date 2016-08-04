@@ -9,7 +9,7 @@ hexBoard = [[0]*(boardSize**2) for i in range(boardSize)]
 
 
 class Board (object):
-    def _init_ (self):	                    #Change as needed
+    def _init_ (self):	                    #Change as needed.
         self.hexBoard = [[0]*(boardSize**2) for i in range(boardSize)]
     
     def setBoard(self, board):              #Done
