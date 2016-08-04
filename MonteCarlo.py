@@ -4,19 +4,20 @@ import numpy as np
 
 from _ast import Nonlocal
 
-boardSize = 9
-hexBoard = [[0]*(boardSize**2) for i in range(boardSize)]
+boardSize = 3
+inBoard = [[0]*(boardSize) for i in range(boardSize)]
 
 
 class Board (object):
+    
     def _init_ (self):	                    #Change as needed.
         self.hexBoard = [[0]*(boardSize**2) for i in range(boardSize)]
     
-    def setBoard(self, board):              #Done
-        self.hexBoard = board
+    def setBoard(self, newBrd):             #Done
+        self.hexBoard = newBrd
     
     def startState (self): 	                #Done
-        return np.reshape(self.hexBoard,(1, len(self.hexBoard)))
+        return np.array(self.hexBoard).flatten().tolist()
     
     def getCurrentPlayer(self, state): 	    #Done
         plr1 = 0
@@ -35,14 +36,14 @@ class Board (object):
             return 1
             
     def nextState(self, state, play): 	    #Done
-        plr = getCurrentPlayer(state)
-        state[play] = plr
-        return state
+        out = list(state)
+        out[play] = self.getCurrentPlayer(out)
+        return tuple(out)
     
-    def getLegalPlays(self, stateHistory): 	#Done
+    def getLegalPlays(self, state): 	    #Done
         plays = []
-        for i in range(len(stateHistory[-1])):
-            if stateHistory[-1][i] == 0:
+        for i in range(len(state)):
+            if state[i] == 0:
                 plays.append(i)
         return plays
     
@@ -99,13 +100,14 @@ class Board (object):
         return shearchForWin()
     
 class monteCarlo(object):
+    
     def __init__(self, board, **kwargs):
         
         self.board = board
         self.states = []
         
         seconds = kwargs.get('Time', 60)
-        self.calculationTime = dateTime.timedelta(seconds = seconds)
+        self.calculationTime = datetime.timedelta(seconds = seconds)
         
         self.wins  = {}
         self.plays = {}
@@ -116,22 +118,27 @@ class monteCarlo(object):
         pass
     
     def getPlay (self):
+        self.states.append(self.board.startState())
         self.maxDepth = 0
         state = self.states[-1]
-        player = self.board.currentPlayer(state)
-        legal = self.board.getLegalPlays(self.states[:])
-        
+        player = self.board.getCurrentPlayer(state)
+        legal = self.board.getLegalPlays(state)
+        # print(legal, state, self.states)
         if not legal:
             return
         elif len(legal) == 1:
             return legal[0]
         
+        # print("Has legal")
+        
         games = 0
         
-        begin = dateTime.datetime.utcnow()
-        while dateTime.dateTime.utcnow() - begin < self.calculationTime:
+        begin = datetime.datetime.utcnow()
+        while datetime.datetime.utcnow() - begin < self.calculationTime:
+            
             self.runSimulation()
             games += 1
+            print("Sims ran: ", games)
         
         moveStates = [(p, self.board.nextState(state, p)) for p in legal]
         
@@ -152,26 +159,33 @@ class monteCarlo(object):
         visitedStates = set()
         statesCopy = self.states[:]
         state = statesCopy[-1]
-        player = self.board.getCurrentPlayer(self, state)
+        player = self.board.getCurrentPlayer(state)
         
         expand = True
         
+        self.maxMoves = len(self.board.getLegalPlays(state))
         for t in range(self.maxMoves  + 1):
-            legal = self.board.getLegalPlays(statesCopy)
-            moveStates = [(p, self.board.nextState(state, p)) for p in legal]
+            
+            legal = self.board.getLegalPlays(statesCopy[-1])
+            
+            
+            moveStates = [(p, self.board.nextState(state, p)) for p in legal] # o-o-o-o-o-o-o-o-o-o-o-o-o-o-o-o
             
             if all(plays.get((player, s)) for p, s in moveStates):
-                logTotal = log(sum(plays[player, s] for p, s in moveStates))
+                logTotal = np.log(sum(plays[player, s] for p, s in moveStates))
                 value, move, state = max(
                                         ((wins[(player, s)] / plays[(player, s)]) +
-                                        self.c * sqrt(logTotal / plays[(player, s)]), p, s)
-                                        for p, s in moveStates)
+                                        self.c * np.sqrt(logTotal / plays[(player, s)]), p, s)
+                                        for p, s in moveStates
+                                        )
                 
             else:
                 move, state = choice(moveStates)
                 
             statesCopy.append(state)
             
+            if t > self.maxDepth:
+                    self.maxDepth = t
             
             if expand and (player, state) not in self.plays:
                 expand = False
@@ -193,4 +207,10 @@ class monteCarlo(object):
             if player == winner:
                 self.wins[(player, state)] += 1
 
+Brd = Board()
+Brd.setBoard(inBoard)
 
+# print(Brd.startState())
+monty = monteCarlo(Brd)
+
+print(monty.getPlay())
