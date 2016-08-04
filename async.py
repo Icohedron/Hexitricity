@@ -1,3 +1,7 @@
+# Based on coreylynch's code
+# https://github.com/coreylynch/async-rl/blob/master/a3c.py
+# Last commit: dd00edc
+
 import tensorflow as tf
 import numpy as np
 import gym
@@ -13,7 +17,7 @@ CONCURRENT_THREADS = 16 # Adjust this according to your CPU specs
 
 THREAD_START_DELAY = 1
 
-REWARD_DISCOUNT_GAMMA = 0.99
+REWARD_DISCOUNT_GAMMA = 1.0
 
 BOARD_SIZE = 9
 BOARD_SIZE_SQUARED = BOARD_SIZE ** 2
@@ -112,16 +116,12 @@ def a3c_thread(thread_num, environment, graph, session, summary_ops, thread_coor
             else:
                 state_reward = session.run(n_value, feed_dict={n_state: [state]})[0][0] # Bootstrap from last state
 
-            state_rewards = []
+            state_rewards = np.zeros(t)
             for i in reversed(range(t_start, t)):
                 state_reward = rewards[i] + REWARD_DISCOUNT_GAMMA * state_reward
-                state_rewards.append(state_reward)
+                state_rewards[i] = state_reward
 
-            states_rev = list(reversed(states))
-            actions_rev = list(reversed(actions))
-            temporal_differences_rev = list(reversed(temporal_differences))
-
-            session.run(n_optimizer, feed_dict={n_state: states_rev, n_action: actions_rev, n_reward: state_rewards, n_temporal_difference: temporal_differences_rev})
+            session.run(n_optimizer, feed_dict={n_state: states, n_action: actions, n_reward: state_rewards, n_temporal_difference: temporal_differences})
 
             if terminal:
                 session.run(episode_timesteps_summary[0], feed_dict={episode_timesteps_summary[1]: ep_t})

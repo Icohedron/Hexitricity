@@ -1,13 +1,10 @@
 import tensorflow as tf
+import numpy as np
 import math
 # import pickle
 from datetime import datetime
 
-WEIGHT_STDDEV = 0.01
-BIAS_CONSTANT = 0.01
-
-RMSProp_DECAY = 0.99
-LEARNING_RATE = 1e-3
+LEARNING_RATE = 7e-4
 ENTROPY_REGULARIZATION_FACTOR = 0.01
 
 NETWORK_SAVE_PATH = 'saved_networks'
@@ -16,12 +13,41 @@ FULL_NETWORK_PATH = NETWORK_SAVE_PATH + '/' + NETWORK_SAVE_NAME
 
 # T = 0
 
+# Weight and bias initialization from miyosuda's code
+# https://github.com/miyosuda/async_deep_reinforce/blob/master/game_ac_network.py
+# Last commit: 41f2d75
+
+def fc_weight_variable(shape):
+    input_channels = shape[0]
+    d = 1.0 / np.sqrt(input_channels)
+    initial = tf.random_uniform(shape, minval=-d, maxval=d)
+    return tf.Variable(initial)
+
+
+def fc_bias_variable(shape, input_channels):
+    d = 1.0 / np.sqrt(input_channels)
+    initial = tf.random_uniform(shape, minval=-d, maxval=d)
+    return tf.Variable(initial)
+
+
+def conv_weight_variable(shape):
+    w = shape[0]
+    h = shape[1]
+    input_channels = shape[2]
+    d = 1.0 / np.sqrt(input_channels * w * h)
+    initial = tf.random_uniform(shape, minval=-d, maxval=d)
+    return tf.Variable(initial)
+
+
+def conv_bias_variable(shape, w, h, input_channels):
+    d = 1.0 / np.sqrt(input_channels * w * h)
+    initial = tf.random_uniform(shape, minval=-d, maxval=d)
+    return tf.Variable(initial)
+
 
 def relu_conv_layer(input_img, kernel_size, in_channels, out_channels):
-    W = tf.Variable(tf.truncated_normal(
-            [kernel_size, kernel_size, in_channels, out_channels],
-            stddev=WEIGHT_STDDEV), name='weights')
-    b = tf.Variable(tf.constant(BIAS_CONSTANT, shape=[out_channels]), name='bias')
+    W = conv_weight_variable([kernel_size, kernel_size, in_channels, out_channels])
+    b = conv_bias_variable([out_channels], kernel_size, kernel_size, in_channels)
     conv = tf.nn.conv2d(input_img, W, strides=[1, 1, 1, 1], padding='SAME')
     return tf.nn.relu(conv + b)
 
@@ -52,30 +78,31 @@ def create_network(graph, board_size, thread_sub_network=False):
                 conv_flat = tf.reshape(h_conv2, [-1, board_size * board_size * 120])
 
             with tf.name_scope('HiddenFC-L3'):
-                W_fcl = tf.Variable(tf.truncated_normal(
-                            [board_size * board_size * 120, 512],
-                            stddev=WEIGHT_STDDEV), name='weights')
-                b_fcl = tf.Variable(tf.constant(BIAS_CONSTANT, shape=[512]), name='bias')
+                W_fcl = fc_weight_variable([board_size * board_size * 120, 512])
+                b_fcl = fc_bias_variable([512], board_size * board_size * 120)
 
                 h_fcl = tf.nn.relu(tf.matmul(conv_flat, W_fcl) + b_fcl)
 
             with tf.name_scope('OutputPolicy-L4-A'):
-                p_W_fcl = tf.Variable(tf.truncated_normal(
-                            [512, board_size * board_size],
-                            stddev=WEIGHT_STDDEV), name='weights')
-                p_b_fcl = tf.Variable(tf.constant(BIAS_CONSTANT, shape=[board_size * board_size]), name='bias')
+                p_W_fcl = fc_weight_variable([512, board_size * board_size])
+                p_b_fcl = fc_bias_variable([board_size * board_size], 512)
 
                 policy = tf.nn.softmax(tf.matmul(h_fcl, p_W_fcl) + p_b_fcl)
 
             with tf.name_scope('OutputValue-L4-B'):
-                v_W_fcl = tf.Variable(tf.truncated_normal([512, 1], stddev=WEIGHT_STDDEV), name='weights')
-                v_b_fcl = tf.Variable(tf.constant(BIAS_CONSTANT, shape=[1]), name='bias')
+                v_W_fcl = fc_weight_variable([512, 1])
+                v_b_fcl = fc_bias_variable([1], 512)
 
                 value = tf.matmul(h_fcl, v_W_fcl) + v_b_fcl
 
             # Training
 
-            RMSProp = tf.train.RMSPropOptimizer(LEARNING_RATE, decay=RMSProp_DECAY)
+            # Loss functions from miyosuda's code
+            # https://github.com/miyosuda/async_deep_reinforce/blob/master/game_ac_network.py
+            # Last commit: 41f2d75
+
+            # Adam = tf.train.AdamOptimizer(LEARNING_RATE)
+            RMSProp = tf.train.RMSPropOptimizer(LEARNING_RATE)
 
             action_one_hot = tf.one_hot(action, board_size * board_size)
 
@@ -88,6 +115,7 @@ def create_network(graph, board_size, thread_sub_network=False):
 
             total_loss = policy_loss + value_loss
 
+            # optimizer = Adam.minimize(total_loss)
             optimizer = RMSProp.minimize(total_loss)
 
             # Add variables and operations to graph
@@ -101,8 +129,6 @@ def create_network(graph, board_size, thread_sub_network=False):
             tf.add_to_collection('outputs', value)
 
             tf.add_to_collection('optimizer', optimizer)
-
-            tf.add_to_collection('initializer', tf.initialize_all_variables())
 
 
 def save_network(saver, session):
