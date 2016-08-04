@@ -1,16 +1,20 @@
 import tensorflow as tf
 import math
+# import pickle
 from datetime import datetime
 
 WEIGHT_STDDEV = 0.01
 BIAS_CONSTANT = 0.01
 
-# RMSProp_DECAY = 0.99
-LEARNING_RATE = 1e-6
+RMSProp_DECAY = 0.99
+LEARNING_RATE = 1e-3
+ENTROPY_REGULARIZATION_FACTOR = 0.01
 
 NETWORK_SAVE_PATH = 'saved_networks'
 NETWORK_SAVE_NAME = 'Hex9x9-v0-Hexitricty.checkpoint'
 FULL_NETWORK_PATH = NETWORK_SAVE_PATH + '/' + NETWORK_SAVE_NAME
+
+# T = 0
 
 
 def relu_conv_layer(input_img, kernel_size, in_channels, out_channels):
@@ -32,6 +36,7 @@ def create_network(graph, board_size, thread_sub_network=False):
                             name='state')
                 action = tf.placeholder(tf.int32, shape=[None], name='action')
                 reward = tf.placeholder(tf.float32, shape=[None], name='reward')
+                temporal_difference = tf.placeholder(tf.float32, shape=[None], name='temporal_difference')
 
                 state_img = tf.transpose(state, perm=[0, 2, 3, 1])
 
@@ -70,59 +75,49 @@ def create_network(graph, board_size, thread_sub_network=False):
 
             # Training
 
-            Adam = tf.train.AdamOptimizer(LEARNING_RATE)
+            RMSProp = tf.train.RMSPropOptimizer(LEARNING_RATE, decay=RMSProp_DECAY)
 
             action_one_hot = tf.one_hot(action, board_size * board_size)
-            reward_expanded = tf.expand_dims(reward, -1)
 
-            # policy_debug = tf.Print(policy, [policy], 'Policy: ')
-            # value_debug = tf.Print(value, [value], 'Value: ')
-            # reward_expanded_debug = tf.Print(reward_expanded, [reward_expanded], 'Reward: ')
+            log_policy = -tf.log(tf.clip_by_value(policy, 1e-20, 1.0))
 
-            # Typically we're supposed to compute the gradients, add them together, then apply them.
-            # But instead we exploit the sum rule in differentiation:
-            #   The sum of derviatives is equal to the derivative of the sums.
+            entropy = -tf.reduce_sum(policy * log_policy, reduction_indices=1)
 
-            policy_baseline = tf.reduce_sum(
-                                tf.log(tf.reduce_sum(tf.mul(policy, action_one_hot),
-                                reduction_indices=1)) * (reward_expanded - value),
-                                reduction_indices=0)
-            value_loss = tf.reduce_sum(tf.square(reward - value), reduction_indices=0)
+            policy_loss = -tf.reduce_sum(tf.reduce_sum(tf.mul(log_policy, action_one_hot), reduction_indices=1) * temporal_difference + ENTROPY_REGULARIZATION_FACTOR * entropy)
+            value_loss = 0.5 * tf.nn.l2_loss(reward - value)
 
-            # policy_baseline_debug = tf.Print(policy_baseline, [policy_baseline], 'Policy Baseline: ')
-            # value_loss_debug = tf.Print(value_loss, [value_loss], 'Value Loss: ')
+            total_loss = policy_loss + value_loss
 
-            # policy_optimizer = RMSProp.minimize(-policy_baseline_debug) # minimizing a negative is the same as maximizing a positive
-            policy_optimizer = Adam.minimize(-policy_baseline)
-            # value_optimizer = RMSProp.minimize(value_loss_debug)
-            value_optimizer = Adam.minimize(value_loss)
+            optimizer = RMSProp.minimize(total_loss)
 
             # Add variables and operations to graph
 
             tf.add_to_collection('inputs', state)
             tf.add_to_collection('inputs', action)
             tf.add_to_collection('inputs', reward)
+            tf.add_to_collection('inputs', temporal_difference)
 
             tf.add_to_collection('outputs', policy)
             tf.add_to_collection('outputs', value)
 
-            tf.add_to_collection('optimizers', policy_optimizer)
-            tf.add_to_collection('optimizers', value_optimizer)
-
-            tf.add_to_collection('test', v_b_fcl)
+            tf.add_to_collection('optimizer', optimizer)
 
             tf.add_to_collection('initializer', tf.initialize_all_variables())
 
 
 def save_network(saver, session):
+    # global T
     saver.save(session, FULL_NETWORK_PATH)
+    # pickle.dump(T, open(NETWORK_SAVE_PATH + '/global_step', 'wb'))
     print('Saved network in ' + FULL_NETWORK_PATH + ' [' + datetime.now().time().isoformat() + ']')
 
 
 def restore_checkpoint(saver, session):
+    # global T
     checkpoint = tf.train.get_checkpoint_state(NETWORK_SAVE_PATH)
     if checkpoint and checkpoint.model_checkpoint_path:
         saver.restore(session, checkpoint.model_checkpoint_path)
+        # T = pickle.load(open(NETWORK_SAVE_PATH + '/global_step', 'rb'))
         print('Restored session from previous checkpoint.')
     else:
         print('Unable to find a saved checkpoint.\nStarting a new network.')
