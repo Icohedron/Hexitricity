@@ -188,7 +188,7 @@ def train(graph, saver, session):
                 time_now = time.time()
                 if time_now - last_summary_time > SUMMARY_INTERVAL:
                     summary_string = session.run(tf.merge_all_summaries())
-                    summary_writer.add_summary(summary_string)
+                    summary_writer.add_summary(summary_string, float(T))
                     last_summary_time = time_now
 
                 T_diff = T - last_T
