@@ -126,7 +126,7 @@ def create_network(graph, board_size, thread_sub_network=False):
             # https://github.com/miyosuda/async_deep_reinforce/blob/master/game_ac_network.py
             # Last commit: 41f2d75
 
-            RMSProp = tf.train.RMSPropOptimizer(LEARNING_RATE) # decay of 0.99 (which the paper used) did not work well here
+            RMSProp = tf.train.RMSPropOptimizer(LEARNING_RATE)
 
             action_one_hot = tf.one_hot(action, board_size * board_size)
 

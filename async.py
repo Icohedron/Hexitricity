@@ -19,7 +19,7 @@ TRAIN = True # else, EVALUATE
 CONCURRENT_THREADS = 16
 
 EPSILON_EXPLORATION = 1.0
-EPSILON_EXPLORATION_DECAY = 1e-7
+EPSILON_EXPLORATION_DECAY = 5e-5
 EPSILON_EXPLORATION_MIN = 0.1
 
 THREAD_START_DELAY = 1
@@ -46,7 +46,7 @@ MAX_T_PER_EPISODE = int(BOARD_SIZE * BOARD_SIZE * 0.5)
 T = 0
 T_max = 1000000000
 
-t_max = 4
+t_max = 5
 
 
 def choose_action(empty_tiles, action_policy, epsilon):
@@ -64,7 +64,7 @@ def a3c_thread(thread_num, environment, graph, session, summary_ops, thread_coor
     # Google Deepmind -- Asynchronous Methods for Deep Reinforcement Learning
     # Asynchronous Advantage Actor Critic (A3C)
 
-    global T, T_max, running, EPSILON_EXPLORATION
+    global T, T_max, running
 
     time.sleep(THREAD_START_DELAY * thread_num)
 
@@ -77,6 +77,8 @@ def a3c_thread(thread_num, environment, graph, session, summary_ops, thread_coor
         n_optimizer = graph.get_collection('optimizer')[0]
 
         episode_reward_summary, episode_timesteps_summary, max_action_probability_summary = summary_ops
+        
+        epsilon = EPSILON_EXPLORATION
 
         ep_r = 0
         max_ap = 0
@@ -100,10 +102,10 @@ def a3c_thread(thread_num, environment, graph, session, summary_ops, thread_coor
 
             while not terminal or (t - t_start) == t_max:
                 action_policy = session.run(n_policy, feed_dict={n_state: [state]})[0]
-                action = choose_action(state[2], action_policy, EPSILON_EXPLORATION)
+                action = choose_action(state[2], action_policy, espilon)
 
-                if EPSILON_EXPLORATION > EPSILON_EXPLORATION_MIN:
-                    EPSILON_EXPLORATION -= EPSILON_EXPLORATION_DECAY
+                if epsilon > EPSILON_EXPLORATION_MIN:
+                    epsilon -= EPSILON_EXPLORATION_DECAY
 
                 next_state, reward, terminal, info = environment.step(action)
 
@@ -236,7 +238,7 @@ def evaluate(graph, session):
     n_state, n_action, n_reward = graph.get_collection('inputs')
     n_policy, n_value = graph.get_collection('outputs')
 
-    episode_rewards = np.array([])
+    episode_rewards = []
 
     session.run(tf.initialize_all_variables())
 
@@ -256,13 +258,12 @@ def evaluate(graph, session):
             if ep_t == MAX_T_PER_EPISODE:
                 terminal = True
 
-            np.append(episode_rewards, reward)
+            episode_rewards.append(reward)
 
     environment.monitor.close()
 
-    print('Reward average: {}'.format(np.mean(episode_rewards)))
-    print('Games won: {}'.format(len(episode_rewards) - np.count_nonzero(episode_rewards - 1.0)))
-    print('Games lost: {}'.format(len(episode_rewards) - np.count_nonzero(episode_rewards + 1.0)))
+    print('Games won (out of 100): {}'.format(len(episode_rewards) - np.count_nonzero(np.array(episode_rewards) - 1.0)))
+    print('Games lost (out of 100): {}'.format(len(episode_rewards) - np.count_nonzero(np.array(episode_rewards) + 1.0)))
 
 
 graph = tf.Graph()
