@@ -1,11 +1,17 @@
 import datetime
+import dill
+import os.path
 from random import choice
 import numpy as np
 
 from _ast import Nonlocal
 
-boardSize = 3
+boardSize = 9
 inBoard = [[0]*(boardSize) for i in range(boardSize)]
+
+path = "Saves/Trees/"
+boardType = str(boardSize)
+ext = ".p"
 
 
 class Board (object):
@@ -106,17 +112,34 @@ class monteCarlo(object):
         self.board = board
         self.states = []
         
-        seconds = kwargs.get('Time', 60)
-        self.calculationTime = datetime.timedelta(seconds = seconds)
-        
-        self.wins  = {}
-        self.plays = {}
+        secondsCalc = kwargs.get('Time', 2400)
+        secondsNote = kwargs.get('Time', 30)
+        self.calculationTime = datetime.timedelta(seconds = secondsCalc)
+        self.notificationTime = datetime.timedelta(seconds = secondsNote)
+       
+        self.loadDicts()
         
         self.c = kwargs.get('c', 1.4)
     
-    def update (self, state):
-        pass
-    
+    def loadDicts(self):
+        global path, boardType, ext
+        if os.path.isfile(path + "Plays-" + boardType + ext):
+            self.plays = dill.load(open(path + "Plays-" + boardType + ext,"rb"))
+            self.wins = dill.load(open(path + "Wins-" + boardType + ext,"rb"))
+        else:
+            self.wins  = {}
+            self.plays = {}
+            
+    def saveDicts(self):
+        global path, boardType, ext
+        
+        dill.dump(self.plays, open(path + "Plays-" + boardType + ext,"wb"))
+        dill.dump(self.wins, open(path + "Wins-" + boardType + ext,"wb"))
+        
+        print("Wins Recorded: ", len(self.wins))
+        print("Plays Recorded: ", len(self.plays))
+        print()
+        
     def getPlay (self):
         self.states.append(self.board.startState())
         self.maxDepth = 0
@@ -133,12 +156,22 @@ class monteCarlo(object):
         
         games = 0
         
+        last = datetime.datetime.utcnow()
         begin = datetime.datetime.utcnow()
+        
+        print("Simulations ran this session: ", games)
+        self.saveDicts()
+        
         while datetime.datetime.utcnow() - begin < self.calculationTime:
             
             self.runSimulation()
             games += 1
-            print("Sims ran: ", games)
+            
+            if datetime.datetime.utcnow() - last > self.notificationTime:
+                last = datetime.datetime.utcnow()
+                
+                print("Simulations ran this session: ", games)
+                self.saveDicts()
         
         moveStates = [(p, self.board.nextState(state, p)) for p in legal]
         
@@ -151,6 +184,8 @@ class monteCarlo(object):
                                )
         
         print("Max depth reached: ", self.maxDepth)
+        
+        self.saveDicts()
         return move
     
     def runSimulation(self):
@@ -213,4 +248,4 @@ Brd.setBoard(inBoard)
 # print(Brd.startState())
 monty = monteCarlo(Brd)
 
-print(monty.getPlay())
+monty.getPlay()
