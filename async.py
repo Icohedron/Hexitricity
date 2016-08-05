@@ -19,7 +19,7 @@ TRAIN = True # else, EVALUATE
 CONCURRENT_THREADS = 16
 
 EPSILON_EXPLORATION = 1.0
-EPSILON_EXPLORATION_DECAY = 3e-6
+EPSILON_EXPLORATION_DECAY = 1e-7
 EPSILON_EXPLORATION_MIN = 0.1
 
 THREAD_START_DELAY = 1
@@ -28,6 +28,8 @@ REWARD_DISCOUNT_GAMMA = 1.0
 
 SAVE_INTERVAL = 5000
 SUMMARY_INTERVAL = 5
+
+SEED = 42
 
 # Constants
 
@@ -265,6 +267,9 @@ def evaluate(graph, session):
 
 graph = tf.Graph()
 with tf.Session(graph=graph) as session:
+    tf.set_random_seed(SEED)
+    np.random.seed(SEED)
+    
     create_network(graph, BOARD_SIZE)
     saver = tf.train.Saver()
 
