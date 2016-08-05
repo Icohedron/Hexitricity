@@ -7,6 +7,7 @@ import numpy as np
 import gym
 import threading
 import time
+import random
 from tqdm import tqdm
 
 from network import *
@@ -17,7 +18,9 @@ TRAIN = True # else, EVALUATE
 
 CONCURRENT_THREADS = 16
 
-PRUNE_INVALID_MOVES = True # When false, performs awfully and does not seem to converge at all.
+EPSILON_EXPLORATION = 1.0
+EPSILON_EXPLORATION_DECAY = 3e-6
+EPSILON_EXPLORATION_MIN = 0.1
 
 THREAD_START_DELAY = 1
 
@@ -41,14 +44,17 @@ MAX_T_PER_EPISODE = int(BOARD_SIZE * BOARD_SIZE * 0.5)
 T = 0
 T_max = 1000000000
 
-t_max = 5
+t_max = 4
 
 
-def choose_action(empty_tiles, action_policy):
+def choose_action(empty_tiles, action_policy, epsilon):
     ap = np.array(action_policy)
     ap *= np.array(empty_tiles).flatten()
     ap /= np.sum(ap)
-    return np.random.choice(len(ap), p=ap)
+    if random.random() < epsilon:
+        return np.random.choice(len(ap), p=ap)
+    else:
+        return np.argmax(ap)
 
 
 def a3c_thread(thread_num, environment, graph, session, summary_ops, thread_coordinator):
@@ -56,7 +62,7 @@ def a3c_thread(thread_num, environment, graph, session, summary_ops, thread_coor
     # Google Deepmind -- Asynchronous Methods for Deep Reinforcement Learning
     # Asynchronous Advantage Actor Critic (A3C)
 
-    global T, T_max, running
+    global T, T_max, running, EPSILON_EXPLORATION
 
     time.sleep(THREAD_START_DELAY * thread_num)
 
@@ -92,7 +98,10 @@ def a3c_thread(thread_num, environment, graph, session, summary_ops, thread_coor
 
             while not terminal or (t - t_start) == t_max:
                 action_policy = session.run(n_policy, feed_dict={n_state: [state]})[0]
-                action = choose_action(state[2], action_policy) if PRUNE_INVALID_MOVES else np.random.choice(len(action_policy), p=action_policy)
+                action = choose_action(state[2], action_policy, EPSILON_EXPLORATION)
+
+                if EPSILON_EXPLORATION > EPSILON_EXPLORATION_MIN:
+                    EPSILON_EXPLORATION -= EPSILON_EXPLORATION_DECAY
 
                 next_state, reward, terminal, info = environment.step(action)
 
@@ -237,7 +246,7 @@ def evaluate(graph, session):
 
         while not terminal:
             action_policy = session.run(n_policy, feed_dict={n_state: [state]})[0]
-            action = choose_action(state[2], action_policy) if PRUNE_INVALID_MOVES else np.random.choice(len(action_policy), p=action_policy)
+            action = choose_action(state[2], action_policy, 0.0)
 
             state, reward, terminal, info = environment.step(action)
 
