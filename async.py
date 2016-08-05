@@ -102,7 +102,7 @@ def a3c_thread(thread_num, environment, graph, session, summary_ops, thread_coor
 
             while not terminal or (t - t_start) == t_max:
                 action_policy = session.run(n_policy, feed_dict={n_state: [state]})[0]
-                action = choose_action(state[2], action_policy, espilon)
+                action = choose_action(state[2], action_policy, epsilon)
 
                 if epsilon > EPSILON_EXPLORATION_MIN:
                     epsilon -= EPSILON_EXPLORATION_DECAY
