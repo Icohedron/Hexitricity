@@ -235,7 +235,7 @@ def evaluate(graph, session):
     environment = gym.make('Hex9x9-v0')
     environment.monitor.start(EVALULATION_FILE_PATH)
 
-    n_state, n_action, n_reward = graph.get_collection('inputs')
+    n_state, n_action, n_reward, n_temporal_differences = graph.get_collection('inputs')
     n_policy, n_value = graph.get_collection('outputs')
 
     episode_rewards = []
