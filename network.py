@@ -5,7 +5,7 @@ from datetime import datetime
 
 # Constants
 
-LEARNING_RATE = 1e-5
+LEARNING_RATE = 7e-4
 ENTROPY_REGULARIZATION_FACTOR = 0.01
 
 NETWORK_SAVE_PATH = 'saved_networks'
@@ -126,7 +126,7 @@ def create_network(graph, board_size, thread_sub_network=False):
             # https://github.com/miyosuda/async_deep_reinforce/blob/master/game_ac_network.py
             # Last commit: 41f2d75
 
-            Adam = tf.train.AdamOptimizer(LEARNING_RATE)
+            RMSProp = tf.train.RMSPropOptimizer(LEARNING_RATE)
 
             action_one_hot = tf.one_hot(action, board_size * board_size)
 
@@ -139,7 +139,7 @@ def create_network(graph, board_size, thread_sub_network=False):
 
             total_loss = policy_loss + value_loss
 
-            optimizer = Adam.minimize(total_loss)
+            optimizer = RMSProp.minimize(total_loss)
 
             # Add variables and operations to graph
 
