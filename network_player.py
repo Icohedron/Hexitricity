@@ -24,29 +24,29 @@ class NetworkPlayer:
         self.n_state = self.graph.get_collection('inputs')[0]
         self.n_policy, self.n_value = self.graph.get_collection('outputs')
     
-    def get_max_action(state):
+    def get_max_action(self, state):
         action_policy = get_action_probs(state)
         return np.argmax(action_policy)
     
-    def get_random_action(state):
+    def get_random_action(self, state):
         action_policy = get_action_probs(state)
         return np.random.choice(len(action_policy), p=action_policy)
     
-    def get_action_probs(state):
+    def get_action_probs(self, state):
         action_policy = get_action_probs_unpruned(state)
         ap = np.array(action_policy)
         ap *= np.array(state[2]).flatten()
         ap /= np.sum(ap)
         return ap
     
-    def get_action_probs_unpruned(state):
+    def get_action_probs_unpruned(self, state):
         return self.session.run(self.n_policy, feed_dict={self.n_state: state})
     
-    def get_win_prediction(state):
+    def get_win_prediction(self, state):
         return self.session.run(self.n_value, feed_dict={self.n_state: state})
         
     def close(self):
         self.session.close()
     
-    def __exit__(self):
+    def __exit__(self, type, value, tb):
         close()
