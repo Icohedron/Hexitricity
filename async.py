@@ -18,13 +18,17 @@ TRAIN = True # else, EVALUATE
 
 CONCURRENT_THREADS = 16
 
-EPSILON_EXPLORATION = 1.0
-EPSILON_EXPLORATION_DECAY = 5e-5
-EPSILON_EXPLORATION_MIN = 0.1
+# EPSILON_EXPLORATION = 1.0
+# EPSILON_EXPLORATION_DECAY = 2e-7
+# EPSILON_EXPLORATION_MIN = 0.1
+
+EPSILON_EXPLORATION = 0.0
+EPSILON_EXPLORATION_DECAY = 0.0
+EPSILON_EXPLORATION_MIN = 0.0
 
 THREAD_START_DELAY = 1
 
-REWARD_DISCOUNT_GAMMA = 1.0
+REWARD_DISCOUNT_GAMMA = 0.99
 
 SAVE_INTERVAL = 5000
 SUMMARY_INTERVAL = 5
@@ -50,13 +54,19 @@ t_max = 5
 
 
 def choose_action(empty_tiles, action_policy, epsilon):
-    ap = np.array(action_policy)
-    ap *= np.array(empty_tiles).flatten()
-    ap /= np.sum(ap)
-    if random.random() < epsilon:
+    empty_tiles_flat = np.array(empty_tiles).flatten()
+    
+    if random.random() < epsilon: # Choose random valid move
+        ap = empty_tiles_flat
+        ap /= np.sum(ap)
         return np.random.choice(len(ap), p=ap)
-    else:
-        return np.argmax(ap)
+    else: # Choose random valid move from policy
+        ap = np.array(action_policy)
+        ap *= np.array(empty_tiles).flatten()
+        if np.sum(ap) == 0:
+            ap = empty_tiles_flat
+        ap /= np.sum(ap)
+        return np.random.choice(len(ap), p=ap)
 
 
 def a3c_thread(thread_num, environment, graph, session, summary_ops, thread_coordinator):
