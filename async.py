@@ -33,6 +33,8 @@ REWARD_DISCOUNT_GAMMA = 0.99
 SAVE_INTERVAL = 5000
 SUMMARY_INTERVAL = 5
 
+DEVICE = '/cpu:0' # '/gpu:0'
+
 SEED = 64
 
 # Constants
@@ -277,17 +279,18 @@ def evaluate(graph, session):
 
 
 graph = tf.Graph()
-with tf.Session(graph=graph) as session:
-    tf.set_random_seed(SEED)
-    np.random.seed(SEED)
+with graph.device(DEVICE):
+    with tf.Session(graph=graph) as session:
+        tf.set_random_seed(SEED)
+        np.random.seed(SEED)
+        
+        create_network(graph, BOARD_SIZE)
+        saver = tf.train.Saver()
     
-    create_network(graph, BOARD_SIZE)
-    saver = tf.train.Saver()
-
-    session.run(tf.initialize_all_variables())
-    restore_checkpoint(saver, session)
-
-    if TRAIN:
-        train(graph, saver, session)
-    else:
-        evaluate(graph, session)
+        session.run(tf.initialize_all_variables())
+        restore_checkpoint(saver, session)
+    
+        if TRAIN:
+            train(graph, saver, session)
+        else:
+            evaluate(graph, session)
