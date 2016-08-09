@@ -25,17 +25,19 @@ class NetworkPlayer:
         self.n_policy, self.n_value = self.graph.get_collection('outputs')
     
     def get_max_action(self, state):
-        action_policy = get_action_probs(state)
+        action_policy = self.get_action_probs(state)
         return np.argmax(action_policy)
     
     def get_random_action(self, state):
-        action_policy = get_action_probs(state)
-        return np.random.choice(len(action_policy), p=action_policy)
+        action_policy = self.get_action_probs(state)
+        # print(action_policy)
+        return np.random.choice(len(action_policy[0]), p=action_policy[0])
     
     def get_action_probs(self, state):
-        action_policy = get_action_probs_unpruned(state)
+        
+        action_policy = self.get_action_probs_unpruned(state)
         ap = np.array(action_policy)
-        ap *= np.array(state[2]).flatten()
+        ap *= np.array(state[0][2]).flatten()
         ap /= np.sum(ap)
         return ap
     
