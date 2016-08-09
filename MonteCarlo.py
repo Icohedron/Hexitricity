@@ -113,23 +113,22 @@ class Board (object):
     
     
     def getTensorState(self, state):
-        blank   = [[0]*9]*9
-        player1 = [[0]*9]*9
-        player2 = [[0]*9]*9
+        blank   = [ [ 0 for i in range(9) ] for j in range(9) ]
+        player1 = [ [ 0 for i in range(9) ] for j in range(9) ]
+        player2 = [ [ 0 for i in range(9) ] for j in range(9) ]
         
         state2d = np.reshape(state, [9,9]).tolist()
-        
-        for y in range(len(state2d)):
-            for x in range(len(state2d[0])):
+        for y in range(9):
+            for x in range(9):
                 if state2d[y][x] == 0:
                     blank[y][x] = 1
-                    
                 elif state2d[y][x] == 1:
                     player1[y][x] = 1
                     
                 else:
                     player2[y][x] = 1
-        
+                    
+        # print(np.matrix(player1),"\n\n\n", np.matrix(player2),"\n\n\n", np.matrix(blank))
         return [[player1, player2, blank]]
     
     
@@ -152,7 +151,7 @@ class monteCarlo(object):
         self.board = board
         self.states = []
 
-        secondsCalc = kwargs.get('Time', 30)
+        secondsCalc = kwargs.get('Time', 0.5)
         secondsNote = kwargs.get('Time', 600)
         self.calculationTime = datetime.timedelta(seconds = secondsCalc)
         self.notificationTime = datetime.timedelta(seconds = secondsNote)
@@ -220,14 +219,14 @@ class monteCarlo(object):
         last = datetime.datetime.utcnow()
         begin = datetime.datetime.utcnow()
         
-        print("starting session")
+        # print("starting session")
         while datetime.datetime.utcnow() - begin < self.calculationTime:
 
             self.runSimulation()
             games += 1
 
         moveStates = [(p, self.board.nextState(state, p)) for p in legal]
-        print("Session complete")
+       # print("Session complete")
         print (games, " games in ", datetime.datetime.utcnow() - begin, " seconds.")
 
         percentWins, move = max(
@@ -272,7 +271,7 @@ class monteCarlo(object):
             else:
                 # Todo: get the moves from NN chooses
                 global network
-                if player == 1:
+                if player == 8:
                     move = network.get_random_action(self.board.getTensorState(state))
                     state = self.board.nextState(state, move)
                 else:
@@ -324,34 +323,16 @@ def evaluate(player, board):
     
     episode_rewards = []
 
-    for episode in range(25):
+    for episode in range(10):
         state = environment.reset()
         terminal = False
         ep_t = 0
 
         while not terminal:
-            """
-            print("got here atleast")
+            
+            # print("got here atleast")
             # print(np.matrix(state))
-            print(state)
-            print(np.matrix(np.reshape(board.miaState(state), [9,9])))
-            if Brd.winner([np.matrix(np.reshape(board.miaState(state), [9,9]))]) == 1:
-                print("Winner")
-                print("Winner")
-                print("Winner")
-                print("Winner")
-                print("Winner")
-                print("Winner")
-                print("Winner")
-            elif Brd.winner([np.matrix(np.reshape(board.miaState(state), [9,9]))]) == 2:
-                print("loser")
-                print("loser")
-                print("loser")
-                print("loser")
-                print("loser")
-                print("loser")
-                print("loser")
-            """
+            # print(state)
                 
                 
             player.setGymBoard([state])
