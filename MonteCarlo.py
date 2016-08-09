@@ -272,7 +272,7 @@ class monteCarlo(object):
             else:
                 # Todo: get the moves from NN chooses
                 global network
-                if player == 8:
+                if player == 1:
                     move = network.get_random_action(self.board.getTensorState(state))
                     state = self.board.nextState(state, move)
                 else:
