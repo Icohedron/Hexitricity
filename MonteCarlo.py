@@ -324,7 +324,7 @@ def evaluate(player, board):
     
     episode_rewards = []
 
-    for episode in range(100):
+    for episode in range(25):
         state = environment.reset()
         terminal = False
         ep_t = 0
@@ -364,9 +364,9 @@ def evaluate(player, board):
 
             episode_rewards.append(reward)
         
-        print('Finished episode {}/100'.format(episode))
+        print('Finished episode {}/25'.format(episode))
 
-    print('Games won (out of 100): {}'.format(len(episode_rewards) - np.count_nonzero(np.array(episode_rewards) - 1.0)))
-    print('Games lost (out of 100): {}'.format(len(episode_rewards) - np.count_nonzero(np.array(episode_rewards) + 1.0)))
+    print('Games won (out of 25): {}'.format(len(episode_rewards) - np.count_nonzero(np.array(episode_rewards) - 1.0)))
+    print('Games lost (out of 25): {}'.format(len(episode_rewards) - np.count_nonzero(np.array(episode_rewards) + 1.0)))
 
 evaluate(monty, Brd)
