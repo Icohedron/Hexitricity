@@ -152,7 +152,7 @@ class monteCarlo(object):
         self.board = board
         self.states = []
 
-        secondsCalc = kwargs.get('Time', 10)
+        secondsCalc = kwargs.get('Time', 30)
         secondsNote = kwargs.get('Time', 600)
         self.calculationTime = datetime.timedelta(seconds = secondsCalc)
         self.notificationTime = datetime.timedelta(seconds = secondsNote)
@@ -238,7 +238,7 @@ class monteCarlo(object):
 
         print("Max depth reached: ", self.maxDepth)
 
-        self.saveDicts(".dp")
+        # self.saveDicts(".dp")
         return move
     
         
