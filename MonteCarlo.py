@@ -369,4 +369,7 @@ def evaluate(player, board):
     print('Games won (out of 25): {}'.format(len(episode_rewards) - np.count_nonzero(np.array(episode_rewards) - 1.0)))
     print('Games lost (out of 25): {}'.format(len(episode_rewards) - np.count_nonzero(np.array(episode_rewards) + 1.0)))
 
+
 evaluate(monty, Brd)
+
+monty.saveDicts(".done")
