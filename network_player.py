@@ -32,6 +32,13 @@ class NetworkPlayer:
     def get_random_action(self, state):
         action_policy = self.get_action_probs(state)
         return np.random.choice(len(action_policy), p=action_policy)
+    
+    def get_top_action(self, state):
+        action_policy = self.get_action_probs(state)
+        
+        return np.random.choice((np.argpartition(action_policy, -4)[-4:])) \
+                if len(action_policy) > 4 else \
+                 np.random.choice((np.argpartition(action_policy, -len(action_policy))[-len(action_policy):]))
 
     def get_action_probs(self, state):
         action_policy = self.get_action_probs_unpruned(state)

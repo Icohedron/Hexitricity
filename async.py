@@ -8,7 +8,7 @@ import gym
 import threading
 import time
 import random
-from tqdm import tqdm
+#from tqdm import tqdm
 
 from network import *
 
@@ -253,7 +253,7 @@ def evaluate(graph, session):
 
     episode_rewards = []
 
-    for episode in range(100):
+    for episode in range(50):
         state = environment.reset()
         terminal = False
 
