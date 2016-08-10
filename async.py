@@ -14,9 +14,9 @@ from network import *
 
 # Adjustable values
 
-TRAIN = True # else, EVALUATE
+TRAIN = False # else, EVALUATE
 
-CONCURRENT_THREADS = 16
+CONCURRENT_THREADS = 1
 
 # EPSILON_EXPLORATION = 1.0
 # EPSILON_EXPLORATION_DECAY = 2e-7
@@ -55,9 +55,9 @@ T_max = 1000000000
 t_max = 5
 
 
-def choose_action(empty_tiles, action_policy, epsilon):
+def choose_action(empty_tiles, action_policy, epsilon, max=False):
     empty_tiles_flat = np.array(empty_tiles).flatten()
-    
+
     if random.random() < epsilon: # Choose random valid move
         ap = empty_tiles_flat
         ap /= np.sum(ap)
@@ -68,7 +68,10 @@ def choose_action(empty_tiles, action_policy, epsilon):
         if np.sum(ap) == 0:
             ap = empty_tiles_flat
         ap /= np.sum(ap)
-        return np.random.choice(len(ap), p=ap)
+        if max:
+            return np.argmax(ap)
+        else:
+            return np.random.choice(len(ap), p=ap)
 
 
 def a3c_thread(thread_num, environment, graph, session, summary_ops, thread_coordinator):
@@ -89,7 +92,7 @@ def a3c_thread(thread_num, environment, graph, session, summary_ops, thread_coor
         n_optimizer = graph.get_collection('optimizer')[0]
 
         episode_reward_summary, episode_timesteps_summary, max_action_probability_summary = summary_ops
-        
+
         epsilon = EPSILON_EXPLORATION
 
         ep_r = 0
@@ -195,16 +198,12 @@ def gen_summary_ops():
 
 
 def train(graph, saver, session):
-    global T
-
     environments = [gym.make('Hex9x9-v0') for i in range(CONCURRENT_THREADS)]
 
     thread_coordinator = tf.train.Coordinator()
 
     summary_ops = gen_summary_ops()
     summary_writer = tf.train.SummaryWriter(SUMMARY_FILE_PATH, graph)
-
-    session.run(tf.initialize_all_variables())
 
     a3c_threads = [threading.Thread(target=a3c_thread, args=(thread_num, environments[thread_num], graph, session, summary_ops, thread_coordinator)) for thread_num in range(CONCURRENT_THREADS)]
     print('Starting A3C threads...')
@@ -240,19 +239,19 @@ def train(graph, saver, session):
         thread_coordinator.request_stop()
         thread_coordinator.join(a3c_threads)
         print('Succesfully closed all threads.')
+        evaluate(graph, session)
         save_network(saver, session)
 
 
 def evaluate(graph, session):
     environment = gym.make('Hex9x9-v0')
-    environment.monitor.start(EVALULATION_FILE_PATH)
+    environment.monitor.start(EVALULATION_FILE_PATH, force=True)
+    environment.seed(0)
 
     n_state, n_action, n_reward, n_temporal_differences = graph.get_collection('inputs')
     n_policy, n_value = graph.get_collection('outputs')
 
     episode_rewards = []
-
-    session.run(tf.initialize_all_variables())
 
     for episode in range(100):
         state = environment.reset()
@@ -262,7 +261,7 @@ def evaluate(graph, session):
 
         while not terminal:
             action_policy = session.run(n_policy, feed_dict={n_state: [state]})[0]
-            action = choose_action(state[2], action_policy, 0.0)
+            action = choose_action(state[2], action_policy, 0.0, max=True)
 
             state, reward, terminal, info = environment.step(action)
 
@@ -274,23 +273,22 @@ def evaluate(graph, session):
 
     environment.monitor.close()
 
-    print('Games won (out of 100): {}'.format(len(episode_rewards) - np.count_nonzero(np.array(episode_rewards) - 1.0)))
-    print('Games lost (out of 100): {}'.format(len(episode_rewards) - np.count_nonzero(np.array(episode_rewards) + 1.0)))
-
+    print('Games won: {}'.format(len(episode_rewards) - np.count_nonzero(np.array(episode_rewards) - 1.0)))
+    print('Games lost: {}'.format(len(episode_rewards) - np.count_nonzero(np.array(episode_rewards) + 1.0)))
 
 graph = tf.Graph()
 with graph.device(DEVICE):
     with tf.Session(graph=graph) as session:
         tf.set_random_seed(SEED)
         np.random.seed(SEED)
-        
-        create_network(graph, BOARD_SIZE)
+
+        create_network(session.graph, BOARD_SIZE)
         saver = tf.train.Saver()
-    
+
         session.run(tf.initialize_all_variables())
         restore_checkpoint(saver, session)
-    
+
         if TRAIN:
-            train(graph, saver, session)
+            train(session.graph, saver, session)
         else:
-            evaluate(graph, session)
+            evaluate(session.graph, session)

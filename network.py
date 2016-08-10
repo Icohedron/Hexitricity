@@ -126,7 +126,7 @@ def create_network(graph, board_size, thread_sub_network=False):
             # https://github.com/miyosuda/async_deep_reinforce/blob/master/game_ac_network.py
             # Last commit: 41f2d75
 
-            RMSProp = tf.train.RMSPropOptimizer(LEARNING_RATE, decay=0.99, momentum=0.0, epsilon=1e-10, use_locking=False, name='RMSProp')
+            RMSProp = tf.train.RMSPropOptimizer(LEARNING_RATE, decay=0.9, momentum=0.0, epsilon=1e-10, use_locking=False, name='RMSProp')
 
             action_one_hot = tf.one_hot(action, board_size * board_size)
 
@@ -154,7 +154,7 @@ def create_network(graph, board_size, thread_sub_network=False):
             tf.add_to_collection('optimizer', optimizer)
 
 
-def save_network(saver, session):
+def save_network(saver, session, global_step):
     saver.save(session, FULL_NETWORK_PATH)
     print('Saved network in ' + FULL_NETWORK_PATH + ' [' + datetime.now().time().isoformat() + ']')
 
