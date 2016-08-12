@@ -48,14 +48,14 @@ def conv_bias_variable(shape, w, h, input_channels):
     initial = tf.random_uniform(shape, minval=-d, maxval=d)
     return tf.Variable(initial)
 
+# End of weight and bias initialization functions
+
 
 def relu_conv_layer(input_img, kernel_size, in_channels, out_channels):
     W = conv_weight_variable([kernel_size, kernel_size, in_channels, out_channels])
     b = conv_bias_variable([out_channels], kernel_size, kernel_size, in_channels)
     conv = tf.nn.conv2d(input_img, W, strides=[1, 1, 1, 1], padding='SAME')
     return tf.nn.relu(conv + b)
-    
-# End of weight and bias initialization functions
 
 
 def create_network(graph, board_size, thread_sub_network=False):
