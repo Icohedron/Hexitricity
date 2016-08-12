@@ -1,7 +1,0 @@
-TODO:
- - Network Hyperparameter adjustment and testing
- - Optimization?
- - Documentation
- - More code comments
- - Use Monte Carlo Tree Search with the neural network
- - Network evaluator
