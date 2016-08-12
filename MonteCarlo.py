@@ -21,6 +21,7 @@ boardType = str(boardSize)
 # Todo more comments
 with netPlay.NetworkPlayer() as network:
     class Board (object):
+        """Board class for MCTS."""
     
         def _init_ (self):                        #Change as needed
             self.hexBoard = [[0]*(boardSize**2) for i in range(boardSize)]
@@ -129,7 +130,7 @@ with netPlay.NetworkPlayer() as network:
                         player2[y][x] = 1
                         
             # print(np.matrix(player1),"\n\n\n", np.matrix(player2),"\n\n\n", np.matrix(blank))
-            return [[player1, player2, blank]]
+            return [player1, player2, blank]
         
         
         def miaState(self, state):
@@ -147,7 +148,7 @@ with netPlay.NetworkPlayer() as network:
     class monteCarlo(object):
     
         def __init__(self, board, **kwargs):
-    
+            """Initialize"""
             self.board = board
             self.states = []
     
@@ -161,6 +162,7 @@ with netPlay.NetworkPlayer() as network:
             self.c = kwargs.get('c', 1.4)
     
         def loadDicts(self, ext):
+            """Load the node dictionaries."""
             global path, boardType
             gc.disable()
             if os.path.isfile(path + boardType + "-Plays"  + ext):
@@ -187,6 +189,7 @@ with netPlay.NetworkPlayer() as network:
             gc.enable()
     
         def saveDicts(self, ext):
+            """Save the node dictionaries."""
             global path, boardType
             gc.disable()
             print("Saving")
@@ -271,8 +274,8 @@ with netPlay.NetworkPlayer() as network:
                 else:
                     # Todo: get the moves from NN chooses
                     global network
-                    if t == 0:
-                        move = network.get_top_action(self.gymBoard)
+                    if t < 0:
+                        move = network.get_top_action(self.board.getTensorState(self.gymBoard))
                         state = self.board.nextState(state, move)
                     else:
                         move, state = choice(moveStates)
