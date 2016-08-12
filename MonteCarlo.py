@@ -10,15 +10,17 @@ import gym
 
 from _ast import Nonlocal
 
+'''
+Following the Jeff Bradberry's introduction to MCTS
+https://jeffbradberry.com/posts/2015/09/intro-to-monte-carlo-tree-search/
+'''
+
 boardSize = 9
 inBoard = [[0]*(boardSize) for i in range(boardSize)]
 
 path = "Saves/Trees/"
 boardType = str(boardSize)
 
-# network = netPlay.NetworkPlayer()
-
-# Todo more comments
 with netPlay.NetworkPlayer() as network:
     class Board (object):
         """Board class for MCTS."""
@@ -152,7 +154,7 @@ with netPlay.NetworkPlayer() as network:
             self.board = board
             self.states = []
     
-            secondsCalc = kwargs.get('Time', 1)
+            secondsCalc = kwargs.get('Time', 1.5)
             secondsNote = kwargs.get('Time', 600)
             self.calculationTime = datetime.timedelta(seconds = secondsCalc)
             self.notificationTime = datetime.timedelta(seconds = secondsNote)
@@ -204,67 +206,71 @@ with netPlay.NetworkPlayer() as network:
             print()
     
         def getPlay (self, inputState):
+            print("Getting move")
             self.states.append(inputState)
             self.maxDepth = 0
             state = self.states[-1]
             player = self.board.getCurrentPlayer(state)
             legal = self.board.getLegalPlays(state)
-            # print(legal, state, self.states)
+            
+
+            """Return if there is no real decision to be made."""
             if not legal:
+                print("No moves available. \n")
                 return
             elif len(legal) == 1:
+                print("One move available. \n")
                 return legal[0]
     
-            # print("Has legal")
-    
             games = 0
-    
-            last = datetime.datetime.utcnow()
             begin = datetime.datetime.utcnow()
-            
-            # print("starting session")
             while datetime.datetime.utcnow() - begin < self.calculationTime:
-    
                 self.runSimulation()
                 games += 1
     
+    
             moveStates = [(p, self.board.nextState(state, p)) for p in legal]
-           # print("Session complete")
-            print (games, " games in ", datetime.datetime.utcnow() - begin, " seconds.")
+            
+            
     
-            percentWins, move = max(
-                                   (self.wins.get((player, s), 0) /
-                                    self.plays.get((player, s), 1), p)
-                                    for p, s in moveStates
-                                   )
     
-            print("Max depth reached: ", self.maxDepth)
-    
-            # self.saveDicts(".dp")
+            percentWins, move = max((   self.wins.get((player, s), 0) /
+                                        self.plays.get((player, s), 1), p)
+                                        for p, s in moveStates)
+            
+            
+            print (" Simulations     : ", games,"\n",\
+                   "Time take       : ", datetime.datetime.utcnow() - begin,"\n",\
+                   "Max moves taken : ", self.maxDepth)
+            
+            print("Move : ",move, "\n")
             return move
-        
             
     
         def runSimulation(self):
+            """Run through a simulation of what the game could be."""
             plays, wins = self.plays, self.wins
-    
             visitedStates = set()
+            
             statesCopy = self.states[:]
             state = statesCopy[-1]
             player = self.board.getCurrentPlayer(state)
     
-            expand = True
-    
+            expand = 8
             self.maxMoves = len(self.board.getLegalPlays(state))
-            for t in range(self.maxMoves  + 1):
+            for simMoves in range(self.maxMoves):
     
                 legal = self.board.getLegalPlays(statesCopy[-1])
     
     
-                moveStates = [(p, self.board.nextState(state, p)) for p in legal] # o-o-o-o-o-o-o-o-o-o-o-o-o-o-o-o
-    
+                moveStates = [(p, self.board.nextState(state, p)) for p in legal]
+                
+                
                 if all(plays.get((player, s)) for p, s in moveStates):
+                    """UCB."""
                     logTotal = np.log(sum(plays[player, s] for p, s in moveStates))
+                    
+                    """Trading of the numpy.max here for the python max due to miscount errors."""
                     value, move, state = max(
                                             ((wins[(player, s)] / plays[(player, s)]) +
                                             self.c * np.sqrt(logTotal / plays[(player, s)]), p, s)
@@ -272,49 +278,51 @@ with netPlay.NetworkPlayer() as network:
                                             )
     
                 else:
-                    # Todo: get the moves from NN chooses
+                    """Random move."""
                     global network
-                    if t < 0:
-                        move = network.get_top_action(self.board.getTensorState(self.gymBoard))
+                    if simMoves == 0:
+                        """Get next move from network"""
+                        move = network.get_top_action(self.gymBoard)
                         state = self.board.nextState(state, move)
                     else:
+                        """Random move"""
                         move, state = choice(moveStates)
-    
-                statesCopy.append(state)
-    
-                if t > self.maxDepth:
-                        self.maxDepth = t
-    
-                if expand and (player, state) not in self.plays:
-                    expand = False
+                
+                
+                if expand > 0 and (player, state) not in self.plays:
+                    """Set the plays and wins at (player, state) to 0 """
+                    expand -= 1
                     self.plays[(player, state)] = 0
                     self.wins[(player, state)] = 0
-                    if t > self.maxDepth:
-                        self.maxDepth = t
-    
+                    if simMoves > self.maxDepth:
+                        self.maxDepth = simMoves
+                else:
+                    if simMoves > self.maxDepth:
+                        self.maxDepth = simMoves
+                
+                statesCopy.append(state)
                 visitedStates.add((player, state))
                 
                 winner = self.board.winner(statesCopy)
                 if winner:
+                    """"""
                     break
     
             for player, state in visitedStates:
+                """"""
                 if (player, state) not in self.plays:
                     continue
-                self.plays[(player, state)] += 1
-                if player == winner:
-                    self.wins[(player, state)] += 1
+                else:
+                    self.plays[(player, state)] += 1
+                    if player == winner:
+                        self.wins[(player, state)] += 1
                     
         def setGymBoard(self, state):
+            """Set the state that the NN will use."""
             self.gymBoard = state
     
     Brd = Board()
     Brd.setBoard(inBoard)
-    
-    
-    
-    
-    
     
     monty = monteCarlo(Brd)
     # state = Brd.startState()
@@ -332,13 +340,7 @@ with netPlay.NetworkPlayer() as network:
             ep_t = 0
             
             while not terminal:
-                
-                # print("got here atleast")
-                # print(np.matrix(state)deep
-                # print(state)
-                
                 # environment.render()
-                    
                 player.setGymBoard(state)
                 action = player.getPlay(board.miaState(state))
                 state, reward, terminal, info = environment.step(action)
@@ -357,5 +359,5 @@ with netPlay.NetworkPlayer() as network:
     
     evaluate(monty, Brd)
     
-    monty.saveDicts(".done")
+    monty.saveDicts(".nd")
     
