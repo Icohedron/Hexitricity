@@ -12,12 +12,14 @@ NETWORK_SAVE_PATH = 'saved_networks'
 NETWORK_SAVE_NAME = 'Hex9x9-v0-Hexitricty.checkpoint'
 FULL_NETWORK_PATH = NETWORK_SAVE_PATH + '/' + NETWORK_SAVE_NAME
 
-# Weight and bias initialization from miyosuda's code
+DEVICE = '/cpu:0' # '/gpu:0'
+
+# Weight and bias functions from miyosuda's code
 # https://github.com/miyosuda/async_deep_reinforce/blob/master/game_ac_network.py
 # Last commit: 41f2d75
 
-# Allows the network to converge faster than a typical random normal distribution
-
+# This weight and bias initialization allows the network to converge faster than a typical random normal distribution.
+# http://neuralnetworksanddeeplearning.com/chap3.html#weight_initialization
 
 def fc_weight_variable(shape):
     input_channels = shape[0]
@@ -52,6 +54,8 @@ def relu_conv_layer(input_img, kernel_size, in_channels, out_channels):
     b = conv_bias_variable([out_channels], kernel_size, kernel_size, in_channels)
     conv = tf.nn.conv2d(input_img, W, strides=[1, 1, 1, 1], padding='SAME')
     return tf.nn.relu(conv + b)
+    
+# End of weight and bias initialization functions
 
 
 def create_network(graph, board_size, thread_sub_network=False):
@@ -60,7 +64,7 @@ def create_network(graph, board_size, thread_sub_network=False):
     # Weights and biases are shared between the policy and value networks except for all layers except the output layers
 
     with graph.as_default():
-        with graph.device('/cpu:0'):
+        with graph.device(DEVICE):
 
             with tf.name_scope('Inputs'):
                 # 'state' is the input layer of the network
@@ -101,7 +105,7 @@ def create_network(graph, board_size, thread_sub_network=False):
             # Output Layers
 
             # Policy Output: fully connected layer of board_size^2 neurons using softmax activation
-            # Outputs a probability distribution of actions to choose
+            # Outputs a probability distribution of actions to choose from
             with tf.name_scope('OutputPolicy-L4-A'):
                 p_W_fcl = fc_weight_variable([512, board_size * board_size])
                 p_b_fcl = fc_bias_variable([board_size * board_size], 512)
@@ -121,12 +125,21 @@ def create_network(graph, board_size, thread_sub_network=False):
             # Algorithm S3 from https://arxiv.org/abs/1602.01783
             # Google Deepmind -- Asynchronous Methods for Deep Reinforcement Learning
             # Asynchronous Advantage Actor Critic (A3C)
+            
+            # With added entropy regularization
 
             # Loss functions from miyosuda's code
             # https://github.com/miyosuda/async_deep_reinforce/blob/master/game_ac_network.py
             # Last commit: 41f2d75
-
+            
             RMSProp = tf.train.RMSPropOptimizer(LEARNING_RATE, decay=0.9, momentum=0.0, epsilon=1e-10, use_locking=False, name='RMSProp')
+
+            # A decay of 0.9 was used because it seems to make the network converge more quickly
+            # It also makes the policy less 'confident' in its actions (no output from a neuron is greater than ~0.15)
+
+            # The decay of 0.99 used in Google DeepMind's paper made the policy have high 'confidence'
+            # (the output from a neuron reaches near 1.0) and it stayed at a losing average (~40% win rate) for several hours.
+            # Perhaps we could try it again but with better hardware and more training time.
 
             action_one_hot = tf.one_hot(action, board_size * board_size)
 
@@ -140,8 +153,10 @@ def create_network(graph, board_size, thread_sub_network=False):
             total_loss = policy_loss + value_loss
 
             optimizer = RMSProp.minimize(total_loss)
+            
+            # End of loss functions
 
-            # Add variables and operations to graph
+            # Add variables and operations to graph collections
 
             tf.add_to_collection('inputs', state)
             tf.add_to_collection('inputs', action)

@@ -1,0 +1,10 @@
+A full network save consists of these files
+ - ../checkpoint
+ - ../Hex9x9-v0-Hexitricty.checkpoint
+ - ../Hex9x9-v0-Hexitricty.checkpoint.meta
+ - ../tf_summaries/events.out.tfevents.*
+
+So to load an archived network, simply replace/add these files.
+
+Note:
+ - This git repo uses the 20 min trained network by default.
